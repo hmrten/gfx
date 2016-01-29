@@ -6,12 +6,31 @@
 
 typedef unsigned int u32_t;
 
+enum {
+  // events
+  GE_QUIT=1, GE_KEYDOWN, GE_KEYUP, GE_KEYCHAR, GE_MOUSE,
+  // keycodes ('0'..'9' and 'a'..'z' as lowercase ascii)
+  GK_BACK=8, GK_TAB=9, GK_RET=13, GK_ESC=27, GK_SPACE=32, GK_CTRL=128,
+  GK_SHIFT, GK_ALT, GK_UP, GK_DOWN, GK_LEFT, GK_RIGHT, GK_INS, GK_DEL,
+  GK_HOME, GK_END, GK_PGUP, GK_PGDN, GK_F1, GK_F2, GK_F3, GK_F4, GK_F5,
+  GK_F6, GK_F7, GK_F8, GK_F9, GK_F10, GK_F11, GK_F12, GK_M1, GK_M2, GK_M3,
+  GK_M4, GK_M5
+};
+
 extern void *g_fb;
+extern u32_t g_dw;
+extern u32_t g_dh;
 
 int g_loop(double t, double dt);
+int g_event(u32_t *ep);
+
+void g_ods(const char *fmt, ...);
 
 #ifdef GFX_C
 void *g_fb;
+u32_t g_dw;
+u32_t g_dh;
+
 #ifdef GFX_WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -21,17 +40,94 @@ static u32_t i_buf[G_XRES*G_YRES];
 static HWND  i_hw;
 static HDC   i_dc;
 static DWORD i_winsize;
-static BOOL  i_windone;
+static DWORD i_qhead;
+static u32_t i_qdata[256][2];
+static DWORD i_qtail;
 
+void g_ods(const char *fmt, ...)
+{
+  static char buf[1024];
+  va_list args;
+  va_start(args, fmt);
+  vsprintf(buf, fmt, args);
+  OutputDebugStringA(buf);
+  va_end(args);
+}
+
+int g_event(u32_t *ep)
+{
+  DWORD head = i_qhead, tail = i_qtail;
+  u32_t ev;
+  _ReadWriteBarrier();
+  if (head == tail) return 0;
+  ev  = i_qdata[head][0];
+  *ep = i_qdata[head][1];
+  _ReadWriteBarrier();
+  i_qhead = (head+1) & 255;
+  return ev;
+}
+
+static int i_qadd(u32_t ev, u32_t ep)
+{
+  DWORD head = i_qhead, tail = i_qtail, ntail = (tail+1) & 255;
+  _ReadWriteBarrier();
+  if (ntail == head) return 0;
+  i_qdata[tail][0] = ev;
+  i_qdata[tail][1] = ep;
+  _ReadWriteBarrier();
+  i_qtail = ntail;
+  return 1;
+}
+
+static const BYTE i_vkmap[256] = {
+  0, 0, 0, 0, 0, 0, 0, 0, '\b', '\t', 0, 0, 0, '\r', 0, 0, GK_SHIFT,
+  GK_CTRL, GK_ALT, 0, 0, 0, 0, 0, 0, 0, 0, GK_ESC, 0, 0, 0, 0, ' ',
+  GK_PGUP, GK_PGDN, GK_END, GK_HOME, GK_LEFT, GK_UP, GK_RIGHT,
+  GK_DOWN, 0, 0, 0, 0, GK_INS, GK_DEL, 0, '0', '1', '2', '3', '4', '5',
+  '6', '7', '8', '9', 0, 0, 0, 0, 0, 0, 0, 'a', 'b', 'c', 'd', 'e', 'f',
+  'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+  'u', 'v', 'w', 'x', 'y', 'z', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, GK_F1, GK_F2, GK_F3, GK_F4, GK_F5, GK_F6,
+  GK_F7, GK_F8, GK_F9, GK_F10, GK_F11, GK_F12
+};
 static LRESULT CALLBACK i_winproc(HWND hw, UINT msg, WPARAM wp, LPARAM lp)
 {
+  u32_t ev=0, ep=0;
   switch (msg) {
-  case WM_CLOSE:      PostQuitMessage(0); return 0;
+  case WM_SYSKEYUP:
+  case WM_SYSKEYDOWN:  if ((lp&(1<<29)) && !(lp&(1<<31)) && wp == VK_F4) {
+                         PostQuitMessage(0);
+                         return 0;
+                       }
+  case WM_KEYUP:
+  case WM_KEYDOWN:     if (!(lp&(1<<30)) == !!(lp&(1<<31))) return 0;
+                       ev = (lp&(1<<31)) ? GE_KEYUP : GE_KEYDOWN;
+                       if ((ep = i_vkmap[wp & 255])) goto qadd;
+                       return 0;
+  case WM_CHAR:        ev = GE_KEYCHAR; ep = (u32_t)wp; goto qadd;
+  case WM_LBUTTONUP:   ep = GK_M1; goto mup;
+  case WM_MBUTTONUP:   ep = GK_M2; goto mup;
+  case WM_RBUTTONUP:   ep = GK_M3; goto mup;
+  case WM_LBUTTONDOWN: ep = GK_M1; goto mdn;
+  case WM_MBUTTONDOWN: ep = GK_M2; goto mdn;
+  case WM_RBUTTONDOWN: ep = GK_M3; goto mdn;
+  case WM_MOUSEWHEEL:  ep = ((int)wp>>16) / WHEEL_DELTA > 0 ? GK_M4 : GK_M5;
+                       i_qadd(GE_KEYDOWN, ep);
+                       i_qadd(GE_KEYUP, ep);
+                       return 0;
+  case WM_MOUSEMOVE:   ev = GE_MOUSE;
+                       ep = (u32_t)lp;
+                       goto qadd;
   case WM_SIZE:       _ReadWriteBarrier(); i_winsize = (DWORD)lp; return 0;
   case WM_ERASEBKGND: return 1;
-  case WM_KEYDOWN:    if (wp == VK_ESCAPE) PostQuitMessage(0); return 0;
+  case WM_CLOSE:      PostQuitMessage(0); return 0;
   }
   return DefWindowProc(hw, msg, wp, lp);
+
+mup:  ev = GE_KEYUP; goto qadd;
+mdn:  ev = GE_KEYDOWN;
+qadd: i_qadd(ev, ep);
+      return 0;
 }
 
 static DWORD WINAPI i_winloop(void *arg)
@@ -60,9 +156,7 @@ static DWORD WINAPI i_winloop(void *arg)
     TranslateMessage(&msg);
     DispatchMessage(&msg);
   }
-
-  _ReadWriteBarrier();
-  i_windone = 1;
+  i_qadd(GE_QUIT, 0);
   return 0;
 }
 
@@ -101,6 +195,7 @@ __declspec(noreturn) void WinMainCRTStartup(void)
   double freq, t, dt, lt;
   HWND  hw;
   HDC   dc;
+  u32_t dw, dh;
 
   g_fb = i_buf;
 
@@ -115,22 +210,24 @@ __declspec(noreturn) void WinMainCRTStartup(void)
   hw = i_hw;
 
   QueryPerformanceCounter(&tbase);
-  while (!i_windone) {
-    _ReadWriteBarrier();
-
+  for (;;) {
     QueryPerformanceCounter(&tnow);
     tnow.QuadPart -= tbase.QuadPart;
     t = freq * tnow.QuadPart;
     dt = freq * (tnow.QuadPart - tlast.QuadPart);
     tlast = tnow;
 
-    DWORD dw = i_winsize;
+    dw = i_winsize;
     _ReadWriteBarrier();
-    DWORD dh = dw >> 16;
+    dh = dw >> 16;
     dw &= 0xFFFF;
 
+    g_dw = dw;
+    g_dh = dh;
+
     QueryPerformanceCounter(&tnow);
-    g_loop(t, dt);
+    if (!g_loop(t, dt))
+      break;
     QueryPerformanceCounter(&tloop);
     lt = freq * (tloop.QuadPart - tnow.QuadPart);
 

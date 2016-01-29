@@ -69,6 +69,5 @@ int g_loop(double t, double dt)
     return 0;
 
   draw(t);
-
   return 1;
 }

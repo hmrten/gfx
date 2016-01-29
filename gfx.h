@@ -25,6 +25,7 @@ int g_loop(double t, double dt);
 int g_event(u32_t *ep);
 
 void g_ods(const char *fmt, ...);
+void g_delay(int ms);
 
 #ifdef GFX_C
 void *g_fb;
@@ -65,6 +66,11 @@ int g_event(u32_t *ep)
   _ReadWriteBarrier();
   i_qhead = (head+1) & 255;
   return ev;
+}
+
+void g_delay(int ms)
+{
+  Sleep((DWORD)ms);
 }
 
 static int i_qadd(u32_t ev, u32_t ep)

@@ -1,4 +1,5 @@
 // test program for gfx.h
+#include <math.h>
 #define GFX_C
 #include "gfx.h"
 
@@ -15,10 +16,6 @@ static void printkey(int k, int d)
   default: g_ods("key(%d): '%c'\n", d, k);
   }
 #undef X
-}
-
-static void printchar(int key)
-{
 }
 
 static int events(void)
@@ -42,17 +39,36 @@ static int events(void)
   }
   return 1;
 }
+
+static void draw(double t)
+{
+	static float fxd = 1.0f / G_XRES;
+	static float fyd = 1.0f / G_YRES;
+	float fx, fy=0.0f, ft=(float)t;
+  u32_t *p = g_fb;
+	for (int py=0; py<G_YRES; ++py, fy+=fyd, p+=G_XRES) {
+		float s = 0.3f*sinf(fy*10.0f + ft);
+    fx = 0.0f;
+		for (int px=0; px<G_XRES; ++px, fx+=fxd) {
+			float r = fx;
+			float g = fy;
+			float b = fabsf(fx+s-0.5f);
+      g += ceilf((1.0f-b)*5.0f) * 0.1f;
+      if (g > 1.0f) g = 1.0f;
+			int cr = (int)(r*255.0f);
+			int cg = (int)(g*255.0f);
+			int cb = 255;
+			p[px] = (cr<<16) | (cg<<8) | cb;
+		}
+	}
+}
+
 int g_loop(double t, double dt)
 {
   if (!events())
     return 0;
 
-  u32_t *p = g_fb, ms = (int)(t*1000.0);
-  for (u32_t y=0; y<G_YRES; ++y, p+=G_XRES) {
-    u32_t z = y*y + ms;
-    for (u32_t x=0; x<G_XRES; ++x)
-      p[x] = x*x + z;
-  }
+  draw(t);
 
   return 1;
 }

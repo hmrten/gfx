@@ -234,7 +234,6 @@ __declspec(noreturn) void WinMainCRTStartup(void)
     StretchDIBits(dc, 0, 0, dw, dh, 0, 0, G_XRES, G_YRES, i_buf, &bi,
                   DIB_RGB_COLORS, SRCCOPY);
     ValidateRect(hw, 0);
-    Sleep(1);
     i_dbgtime(hw, dt, lt, t);
   }
   ExitProcess(0);

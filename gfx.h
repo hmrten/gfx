@@ -4,6 +4,8 @@
 #define G_XRES 640
 #define G_YRES 480
 
+#define INLINE static __inline
+
 #include <stddef.h>
 #include <intrin.h>
 
@@ -42,11 +44,41 @@ void g_ods(const char *fmt, ...);
 void g_delay(int ms);
 
 void g_clear(v4_t col);
+void g_rect(float x, float y, float w, float h, v4_t col);
+
+INLINE void v4_fromint(v4_t v, u32_t i)
+{
+  static const float inv255 = 1.0f / 255.0f;
+  v[0] = inv255 * ((i>>16) & 0xFF);
+  v[1] = inv255 * ((i>>8) & 0xFF);
+  v[2] = inv255 * (i & 0xFF);
+  v[3] = inv255 * (i>>24);
+}
+
+INLINE u32_t v4_toint(v4_t v)
+{
+  u32_t r = (int)(v[0]*255.0f);
+  u32_t g = (int)(v[1]*255.0f);
+  u32_t b = (int)(v[2]*255.0f);
+  u32_t a = (int)(v[3]*255.0f);
+  return (a<<24) | (r<<16) | (g<<8) | b;
+}
+
+INLINE void v4_mix(v4_t a, v4_t b, float t)
+{
+  a[0] = (1.0f-t)*a[0] + t*b[0];
+  a[1] = (1.0f-t)*a[1] + t*b[1];
+  a[2] = (1.0f-t)*a[2] + t*b[2];
+  a[3] = (1.0f-t)*a[3] + t*b[3];
+}
 
 #ifdef GFX_C
 void *g_fb;
 u32_t g_dw;
 u32_t g_dh;
+
+static float g_xmaxf = (float)(G_XRES-1);
+static float g_ymaxf = (float)(G_YRES-1);
 
 void g_clear(v4_t col)
 {
@@ -60,6 +92,32 @@ void g_clear(v4_t col)
   if (a > 255) a = 255;
   u32_t c = (a<<24) | (r<<16) | (g<<8) | b;
   __stosd((unsigned long *)g_fb, c, G_XRES*G_YRES);
+}
+
+void g_rect(float x, float y, float w, float h, v4_t col)
+{
+  idx_t ix0 = (idx_t)x;
+  idx_t ix1 = (idx_t)(x+w);
+  idx_t iy0 = (idx_t)y;
+  idx_t iy1 = (idx_t)(y+h);
+
+  if (ix0 >= ix1 || iy0 >= iy1) return;
+
+  if (ix0 < 0) ix0 = 0;
+  if (ix1 > G_XRES) ix1 = G_XRES;
+  if (iy0 < 0) iy0 = 0;
+  if (iy1 > G_YRES) iy1 = G_YRES;
+
+  u32_t *p = (u32_t *)g_fb + iy0*G_XRES;
+  float t = col[3];
+  for (idx_t y=iy0; y<iy1; ++y, p+=G_XRES) {
+    for (idx_t x=ix0; x<ix1; ++x) {
+      v4_t v;
+      v4_fromint(v, p[x]);
+      v4_mix(v, col, t);
+      p[x] = v4_toint(v);
+    }
+  }
 }
 
 #ifdef GFX_WIN32

@@ -42,25 +42,25 @@ static int events(void)
 
 static void draw(double t)
 {
-	static float fxd = 1.0f / G_XRES;
-	static float fyd = 1.0f / G_YRES;
-	float fx, fy=0.0f, ft=(float)t;
+  static float fxd = 1.0f / G_XRES;
+  static float fyd = 1.0f / G_YRES;
+  float fx, fy=0.0f, ft=(float)t;
   u32_t *p = g_fb;
-	for (int py=0; py<G_YRES; ++py, fy+=fyd, p+=G_XRES) {
-		float s = 0.3f*sinf(fy*10.0f + ft);
+  for (int py=0; py<G_YRES; ++py, fy+=fyd, p+=G_XRES) {
+    float s = 0.3f*sinf(fy*10.0f + ft);
     fx = 0.0f;
-		for (int px=0; px<G_XRES; ++px, fx+=fxd) {
-			float r = fx;
-			float g = fy;
-			float b = fabsf(fx+s-0.5f);
+    for (int px=0; px<G_XRES; ++px, fx+=fxd) {
+      float r = fx;
+      float g = fy;
+      float b = fabsf(fx+s-0.5f);
       g += ceilf((1.0f-b)*5.0f) * 0.1f;
       if (g > 1.0f) g = 1.0f;
-			int cr = (int)(r*255.0f);
-			int cg = (int)(g*255.0f);
-			int cb = 255;
-			p[px] = (cr<<16) | (cg<<8) | cb;
-		}
-	}
+      int cr = (int)(r*255.0f);
+      int cg = (int)(g*255.0f);
+      int cb = 255;
+      p[px] = (cr<<16) | (cg<<8) | cb;
+    }
+  }
 }
 
 int g_loop(double t, double dt)

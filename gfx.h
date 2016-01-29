@@ -4,8 +4,6 @@
 #define G_XRES 640
 #define G_YRES 480
 
-typedef unsigned int u32_t;
-
 enum {
   // events
   GE_QUIT=1, GE_KEYDOWN, GE_KEYUP, GE_KEYCHAR, GE_MOUSE,
@@ -17,6 +15,9 @@ enum {
   GK_M4, GK_M5
 };
 
+typedef unsigned int u32_t;
+typedef __declspec(align(16)) float v4_t[4];
+
 extern void *g_fb;
 extern u32_t g_dw;
 extern u32_t g_dh;
@@ -27,10 +28,26 @@ int g_event(u32_t *ep);
 void g_ods(const char *fmt, ...);
 void g_delay(int ms);
 
+void g_clear(v4_t col);
+
 #ifdef GFX_C
 void *g_fb;
 u32_t g_dw;
 u32_t g_dh;
+
+void g_clear(v4_t col)
+{
+  u32_t r = (int)(col[0]*255.0f);
+  u32_t g = (int)(col[1]*255.0f);
+  u32_t b = (int)(col[2]*255.0f);
+  u32_t a = (int)(col[3]*255.0f);
+  if (r > 255) r = 255;
+  if (g > 255) g = 255;
+  if (b > 255) b = 255;
+  if (a > 255) a = 255;
+  u32_t c = (a<<24) | (r<<16) | (g<<8) | b;
+  __stosd((unsigned long *)g_fb, c, G_XRES*G_YRES);
+}
 
 #ifdef GFX_WIN32
 #define WIN32_LEAN_AND_MEAN

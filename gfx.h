@@ -4,6 +4,9 @@
 #define G_XRES 640
 #define G_YRES 480
 
+#include <stddef.h>
+#include <intrin.h>
+
 enum {
   // events
   GE_QUIT=1, GE_KEYDOWN, GE_KEYUP, GE_KEYCHAR, GE_MOUSE,
@@ -15,7 +18,17 @@ enum {
   GK_M4, GK_M5
 };
 
-typedef unsigned int u32_t;
+typedef signed   char       i8_t;
+typedef unsigned char       u8_t;
+typedef signed   short     i16_t;
+typedef unsigned short     u16_t;
+typedef signed   int       i32_t;
+typedef unsigned int       u32_t;
+typedef signed   long long i64_t;
+typedef unsigned long long u64_t;
+
+typedef ptrdiff_t idx_t;
+
 typedef __declspec(align(16)) float v4_t[4];
 
 extern void *g_fb;

@@ -56,7 +56,7 @@ void g_rect(float x, float y, float w, float h, v4_t col);
 INLINE void v4_fromint(v4_t v, u32_t i)
 {
 #ifdef USE_SSE
-  __m128i m = _mm_set_epi32(0x8F8E8D03, 0x8B8A8900, 0x87868501, 0x83828102);
+  __m128i m = _mm_set_epi32(0x80808003, 0x80808000, 0x80808001, 0x80808002);
   __m128i p = _mm_shuffle_epi8(_mm_cvtsi32_si128(i), m);
   __m128 f = _mm_mul_ps(_mm_cvtepi32_ps(p), _mm_set1_ps(1.0f/255.0f));
   _mm_store_ps(v, f);

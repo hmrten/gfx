@@ -36,7 +36,13 @@ typedef __declspec(align(16)) float v4_t[4];
 extern void *g_fb;
 extern u32_t g_dw;
 extern u32_t g_dh;
+extern u64_t g_perf[64][2];
+
 #define g_assert(p) do { if (!(p)) *(volatile char *)0 = 1; } while(0)
+
+#define g_perfbegin(id) u64_t perf_##id_t0 = __rdtsc()
+#define g_perfend(id, n) (g_perf[id][0] = __rdtsc()-perf_##id_t0,\
+                          g_perf[id][1] = (n))
 
 int g_loop(double t, double dt);
 int g_event(u32_t *ep);
@@ -49,58 +55,71 @@ void g_rect(float x, float y, float w, float h, v4_t col);
 
 INLINE void v4_fromint(v4_t v, u32_t i)
 {
+#ifdef USE_SSE
+  __m128i m = _mm_set_epi32(0x8F8E8D03, 0x8B8A8900, 0x87868501, 0x83828102);
+  __m128i p = _mm_shuffle_epi8(_mm_cvtsi32_si128(i), m);
+  __m128 f = _mm_mul_ps(_mm_cvtepi32_ps(p), _mm_set1_ps(1.0f/255.0f));
+  _mm_store_ps(v, f);
+#else
   static const float inv255 = 1.0f / 255.0f;
   v[0] = inv255 * ((i>>16) & 0xFF);
   v[1] = inv255 * ((i>>8) & 0xFF);
   v[2] = inv255 * (i & 0xFF);
   v[3] = inv255 * (i>>24);
+#endif
 }
 
 INLINE u32_t v4_toint(v4_t v)
 {
+#ifdef USE_SSE
+  __m128i p = _mm_cvttps_epi32(_mm_mul_ps(_mm_load_ps(v), _mm_set1_ps(255.0f)));
+  __m128i z = _mm_setzero_si128();
+  p = _mm_shuffle_epi32(p, 0xC6);
+  p = _mm_packs_epi32(p, z);
+  p = _mm_packus_epi16(p, z);
+  return _mm_cvtsi128_si32(p);
+#else
   u32_t r = (int)(v[0]*255.0f);
   u32_t g = (int)(v[1]*255.0f);
   u32_t b = (int)(v[2]*255.0f);
   u32_t a = (int)(v[3]*255.0f);
   return (a<<24) | (r<<16) | (g<<8) | b;
+#endif
 }
 
 INLINE void v4_mix(v4_t a, v4_t b, float t)
 {
+#ifdef USE_SSE
+  __m128 aa = _mm_mul_ps(_mm_set1_ps(1.0f-t), _mm_load_ps(a));
+  __m128 bb = _mm_mul_ps(_mm_set1_ps(t), _mm_load_ps(b));
+  aa = _mm_add_ps(aa, bb);
+  _mm_store_ps(a, aa);
+#else
   a[0] = (1.0f-t)*a[0] + t*b[0];
   a[1] = (1.0f-t)*a[1] + t*b[1];
   a[2] = (1.0f-t)*a[2] + t*b[2];
   a[3] = (1.0f-t)*a[3] + t*b[3];
+#endif
 }
 
 #ifdef GFX_C
 void *g_fb;
 u32_t g_dw;
 u32_t g_dh;
+u64_t g_perf[64][2];
 
 static float g_xmaxf = (float)(G_XRES-1);
 static float g_ymaxf = (float)(G_YRES-1);
 
 void g_clear(v4_t col)
 {
-  u32_t r = (int)(col[0]*255.0f);
-  u32_t g = (int)(col[1]*255.0f);
-  u32_t b = (int)(col[2]*255.0f);
-  u32_t a = (int)(col[3]*255.0f);
-  if (r > 255) r = 255;
-  if (g > 255) g = 255;
-  if (b > 255) b = 255;
-  if (a > 255) a = 255;
-  u32_t c = (a<<24) | (r<<16) | (g<<8) | b;
-  __stosd((unsigned long *)g_fb, c, G_XRES*G_YRES);
+  __stosd((unsigned long *)g_fb, v4_toint(col), G_XRES*G_YRES);
 }
 
 void g_rect(float x, float y, float w, float h, v4_t col)
 {
-  idx_t ix0 = (idx_t)x;
-  idx_t ix1 = (idx_t)(x+w);
-  idx_t iy0 = (idx_t)y;
-  idx_t iy1 = (idx_t)(y+h);
+  g_perfbegin(0);
+
   float halfw = 0.5f*w;
   float halfh = 0.5f*h;
 
@@ -118,9 +137,10 @@ void g_rect(float x, float y, float w, float h, v4_t col)
   idx_t ih = (idx_t)(iy1-iy0);
 
   if (iw <= 0 || ih <= 0) {
-  u32_t *p = (u32_t *)g_fb + iy0*G_XRES;
+    g_perfend(0, 1);
     return;
   }
+
   g_assert(ix0 >= 0 && ix0 < G_XRES);
   g_assert(ix1 >= 0 && ix1 <= G_XRES);
   g_assert(iy0 >= 0 && iy0 < G_YRES);
@@ -136,11 +156,14 @@ void g_rect(float x, float y, float w, float h, v4_t col)
       p[x] = v4_toint(v);
     }
   }
+
+  g_perfend(0, iw*ih);
 }
 
 #ifdef GFX_WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <mmsystem.h>
 #include <stdio.h>
 
 static u32_t i_buf[G_XRES*G_YRES];
@@ -274,8 +297,10 @@ static DWORD WINAPI i_winloop(void *arg)
 
 static void i_dbgtime(HWND hw, double dt, double lt, double t)
 {
+  static char unit = 'M';
   static char str[256];
-  static double ddt, ddt100, cdt, clt=1.0;
+  static double ddt, ddt100, cdt, clt=1.0, ccy;
+  static u32_t ccyd;
   static int fps, cfps;
 
   ++fps;
@@ -284,6 +309,12 @@ static void i_dbgtime(HWND hw, double dt, double lt, double t)
     cdt = dt*1000.0;
     clt = lt*1000.0;
     cfps = (int)(fps / ddt);
+    u64_t cy = g_perf[0][0];
+    ccyd = (u32_t)(cy / g_perf[0][1]);
+
+    if (cy < 100000) unit = 'K', ccy = cy*1e-3;
+    else unit = 'M', ccy = cy*1e-6;
+
     fps = 0;
     ddt = 0.0;
   }
@@ -293,8 +324,10 @@ static void i_dbgtime(HWND hw, double dt, double lt, double t)
     int m = (int)(t/60.0);
     int s = (int)(t-m*60.0);
     int c = (int)(t*100.0)%100;
-    sprintf(str, "%02d:%02d:%02d - %.2f ms / %4d fps (loop: %.2f ms / %4d fps)",
-            m, s, c, cdt, cfps, clt, (int)(1000.0/clt));
+    sprintf(str,
+            "%02d:%02d:%02d - %.2f ms / %4d fps (loop: %.2f ms / %4d fps)"
+            " (cycles: %.3f%c / %llu)",
+            m, s, c, cdt, cfps, clt, (int)(1000.0/clt), ccy, unit, ccyd);
     SetWindowText(hw, str);
     ddt100 = 0.0;
   }
@@ -310,6 +343,8 @@ __declspec(noreturn) void WinMainCRTStartup(void)
   u32_t dw, dh;
 
   g_fb = i_buf;
+
+  timeBeginPeriod(1);
 
   CreateThread(0, 0, i_winloop, 0, 0, 0);
 

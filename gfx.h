@@ -36,6 +36,7 @@ typedef __declspec(align(16)) float v4_t[4];
 extern void *g_fb;
 extern u32_t g_dw;
 extern u32_t g_dh;
+#define g_assert(p) do { if (!(p)) *(volatile char *)0 = 1; } while(0)
 
 int g_loop(double t, double dt);
 int g_event(u32_t *ep);
@@ -100,18 +101,35 @@ void g_rect(float x, float y, float w, float h, v4_t col)
   idx_t ix1 = (idx_t)(x+w);
   idx_t iy0 = (idx_t)y;
   idx_t iy1 = (idx_t)(y+h);
+  float halfw = 0.5f*w;
+  float halfh = 0.5f*h;
 
-  if (ix0 >= ix1 || iy0 >= iy1) return;
+  idx_t ix0 = (idx_t)(x-halfw);
+  idx_t ix1 = (idx_t)(x+halfw);
+  idx_t iy0 = (idx_t)(y-halfh);
+  idx_t iy1 = (idx_t)(y+halfh);
 
   if (ix0 < 0) ix0 = 0;
   if (ix1 > G_XRES) ix1 = G_XRES;
   if (iy0 < 0) iy0 = 0;
   if (iy1 > G_YRES) iy1 = G_YRES;
 
+  idx_t iw = (idx_t)(ix1-ix0);
+  idx_t ih = (idx_t)(iy1-iy0);
+
+  if (iw <= 0 || ih <= 0) {
   u32_t *p = (u32_t *)g_fb + iy0*G_XRES;
+    return;
+  }
+  g_assert(ix0 >= 0 && ix0 < G_XRES);
+  g_assert(ix1 >= 0 && ix1 <= G_XRES);
+  g_assert(iy0 >= 0 && iy0 < G_YRES);
+  g_assert(iy1 >= 0 && iy1 <= G_YRES);
+
+  u32_t *p = (u32_t *)g_fb + iy0*G_XRES + ix0;
   float t = col[3];
-  for (idx_t y=iy0; y<iy1; ++y, p+=G_XRES) {
-    for (idx_t x=ix0; x<ix1; ++x) {
+  for (idx_t y=0; y<ih; ++y, p+=G_XRES) {
+    for (idx_t x=0; x<iw; ++x) {
       v4_t v;
       v4_fromint(v, p[x]);
       v4_mix(v, col, t);

@@ -351,10 +351,10 @@ __declspec(noreturn) void WinMainCRTStartup(void)
   QueryPerformanceFrequency(&tnow);
   freq = 1.0 / tnow.QuadPart;
 
-  do { _mm_pause(); _ReadWriteBarrier(); dc = i_dc; } while (!dc);
+  do { _mm_pause(); dc = i_dc; _ReadWriteBarrier(); } while (!dc);
 
-  _ReadWriteBarrier();
   hw = i_hw;
+  _ReadWriteBarrier();
 
   QueryPerformanceCounter(&tbase);
   for (;;) {

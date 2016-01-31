@@ -12,10 +12,17 @@ static void draw(double t)
   float ang = (float)t;
   g_clear((v4_t){0.2f, 0.2f, 0.4f, 0.0f});
 
-  v4_t col = { 1.0f, 0.0f, 0.0f };
+  v4_t col = { 1.0f, 0.0f, 1.0f, 1.0f };
+
+  float lx = 300.0f*cosf(ang);
+  float ly = 300.0f*sinf(ang);
+  g_line(pt_x, pt_y, pt_x+lx, pt_y+ly, col);
+
+  col[0] = 1.0f;
+  col[2] = 0.0f;
   col[3] = 0.5f+0.5f*cosf(ang*2.0f);
   float sz = 256.0f;
-  g_rect(pt_x, pt_y, sz, sz, col);
+  g_rect(mx, my, sz, sz, col);
 }
 
 int g_loop(double t, double dt)

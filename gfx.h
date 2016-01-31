@@ -52,6 +52,7 @@ void g_delay(int ms);
 
 void g_clear(v4_t col);
 void g_rect(float x, float y, float w, float h, v4_t col);
+void g_line(float x0, float y0, float x1, float y1, v4_t col);
 
 INLINE void v4_fromint(v4_t v, u32_t i)
 {
@@ -158,6 +159,85 @@ void g_rect(float x, float y, float w, float h, v4_t col)
   }
 
   g_perfend(0, iw*ih);
+}
+
+static int g_linetest(float p, float q, float *t)
+{
+  float r = q / p;
+  if (p==0.0f && q<0.0f) return 0;
+  if (p < 0.0f) {
+    if      (r > t[1]) return 0;
+    else if (r > t[0]) t[0] = r;
+  } else if (p > 0.0f) {
+    if      (r < t[0]) return 0;
+    else if (r < t[1]) t[1] = r;
+  }
+  return 1;
+}
+
+static int g_clipline(float *x0, float *y0, float *x1, float *y1)
+{
+  float x = *x0;
+  float y = *y0;
+  float dx = *x1 - x;
+  float dy = *y1 - y;
+  float t[2] = { 0.0f, 1.0f };
+  if (!g_linetest(-dx, x, t)) return 0;
+  if (!g_linetest( dx, g_xmaxf-x, t)) return 0;
+  if (!g_linetest(-dy, y, t)) return 0;
+  if (!g_linetest( dy, g_ymaxf-y, t)) return 0;
+  *x0 = x + dx*t[0];
+  *y0 = y + dy*t[0];
+  *x1 = x + dx*t[1];
+  *y1 = y + dy*t[1];
+  return 1;
+}
+
+void g_line(float x0, float y0, float x1, float y1, v4_t col)
+{
+  const float t = col[3];
+
+  if (!g_clipline(&x0, &y0, &x1, &y1))
+    return;
+
+  int ix0 = (int)x0;
+  int ix1 = (int)x1;
+  int iy0 = (int)y0;
+  int iy1 = (int)y1;
+
+  g_assert(ix0 >= 0 && ix0 < G_XRES);
+  g_assert(ix1 >= 0 && ix1 < G_XRES);
+  g_assert(iy0 >= 0 && iy0 < G_YRES);
+  g_assert(iy1 >= 0 && iy1 < G_YRES);
+
+  u32_t *p = (u32_t *)g_fb + iy0*G_XRES + ix0;
+  int dx = ix1-ix0;
+  int dy = iy1-iy0;
+  idx_t e0 = dx > 0 ? 1 : -1;
+  idx_t e1 = e0;
+  idx_t step0 = dy > 0 ? G_XRES : -G_XRES;
+  idx_t step1 = 0;
+  int i = dx > 0 ? dx : -dx;
+  int j = dy > 0 ? dy : -dy;
+  int d, n;
+
+  if (j >= i)
+    e1 = 0, step1 = step0, d = i, i = j, j = d;
+  d = i / 2;
+  step0 += e0;
+  step1 += e1;
+  n = i;
+  do {
+    v4_t v;
+    v4_fromint(v, *p);
+    v4_mix(v, col, t);
+    *p = v4_toint(v);
+    d += j;
+    if (d >= i)
+      d -= i, p += step0;
+    else
+      p += step1;
+  } while (n--);
 }
 
 #ifdef GFX_WIN32

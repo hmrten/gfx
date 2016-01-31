@@ -54,54 +54,24 @@ void g_clear(v4_t col);
 void g_rect(float x, float y, float w, float h, v4_t col);
 void g_line(float x0, float y0, float x1, float y1, v4_t col);
 
-INLINE void v4_fromint(v4_t v, u32_t i)
+INLINE __m128 ps_fromint(u32_t i)
 {
-#ifdef USE_SSE
-  __m128i m = _mm_set_epi32(0x80808003, 0x80808000, 0x80808001, 0x80808002);
-  __m128i p = _mm_shuffle_epi8(_mm_cvtsi32_si128(i), m);
-  __m128 f = _mm_mul_ps(_mm_cvtepi32_ps(p), _mm_set1_ps(1.0f/255.0f));
-  _mm_store_ps(v, f);
-#else
-  static const float inv255 = 1.0f / 255.0f;
-  v[0] = inv255 * ((i>>16) & 0xFF);
-  v[1] = inv255 * ((i>>8) & 0xFF);
-  v[2] = inv255 * (i & 0xFF);
-  v[3] = inv255 * (i>>24);
-#endif
+  __m128i sm = _mm_set_epi32(0x80808003, 0x80808000, 0x80808001, 0x80808002);
+  __m128i pi = _mm_shuffle_epi8(_mm_cvtsi32_si128(i), sm);
+  return _mm_mul_ps(_mm_cvtepi32_ps(pi), _mm_set1_ps(1.0f/255.0f));
 }
 
-INLINE u32_t v4_toint(v4_t v)
+INLINE u32_t ps_toint(__m128 ps)
 {
-#ifdef USE_SSE
-  __m128i p = _mm_cvttps_epi32(_mm_mul_ps(_mm_load_ps(v), _mm_set1_ps(255.0f)));
-  __m128i z = _mm_setzero_si128();
-  p = _mm_shuffle_epi32(p, 0xC6);
-  p = _mm_packs_epi32(p, z);
-  p = _mm_packus_epi16(p, z);
-  return _mm_cvtsi128_si32(p);
-#else
-  u32_t r = (int)(v[0]*255.0f);
-  u32_t g = (int)(v[1]*255.0f);
-  u32_t b = (int)(v[2]*255.0f);
-  u32_t a = (int)(v[3]*255.0f);
-  return (a<<24) | (r<<16) | (g<<8) | b;
-#endif
+  __m128i pi = _mm_cvttps_epi32(_mm_mul_ps(ps, _mm_set1_ps(255.0f)));
+  __m128i zi = _mm_setzero_si128();
+  pi = _mm_shuffle_epi32(pi, 0xC6);
+  pi = _mm_packus_epi16(_mm_packs_epi32(pi, zi), zi);
+  return _mm_cvtsi128_si32(pi);
 }
 
-INLINE void v4_mix(v4_t a, v4_t b, float t)
-{
-#ifdef USE_SSE
-  __m128 aa = _mm_mul_ps(_mm_set1_ps(1.0f-t), _mm_load_ps(a));
-  __m128 bb = _mm_mul_ps(_mm_set1_ps(t), _mm_load_ps(b));
-  aa = _mm_add_ps(aa, bb);
-  _mm_store_ps(a, aa);
-#else
-  a[0] = (1.0f-t)*a[0] + t*b[0];
-  a[1] = (1.0f-t)*a[1] + t*b[1];
-  a[2] = (1.0f-t)*a[2] + t*b[2];
-  a[3] = (1.0f-t)*a[3] + t*b[3];
-#endif
-}
+#define ps_madd(x, y, z) _mm_add_ps(_mm_mul_ps(x, y), z)
+#define ps_scale1(p, s) _mm_mul_ps(p, _mm_set1_ps(s))
 
 #ifdef GFX_C
 void *g_fb;
@@ -114,7 +84,8 @@ static float g_ymaxf = (float)(G_YRES-1);
 
 void g_clear(v4_t col)
 {
-  __stosd((unsigned long *)g_fb, v4_toint(col), G_XRES*G_YRES);
+  __m128 ps = _mm_load_ps(col);
+  __stosd((unsigned long *)g_fb, ps_toint(ps), G_XRES*G_YRES);
 }
 
 void g_rect(float x, float y, float w, float h, v4_t col)
@@ -147,14 +118,14 @@ void g_rect(float x, float y, float w, float h, v4_t col)
   g_assert(iy0 >= 0 && iy0 < G_YRES);
   g_assert(iy1 >= 0 && iy1 <= G_YRES);
 
-  u32_t *p = (u32_t *)g_fb + iy0*G_XRES + ix0;
   float t = col[3];
+  __m128 m = _mm_set1_ps(1.0f-t);
+  __m128 a = ps_scale1(_mm_load_ps(col), t);
+  u32_t *p = (u32_t *)g_fb + iy0*G_XRES + ix0;
   for (idx_t y=0; y<ih; ++y, p+=G_XRES) {
     for (idx_t x=0; x<iw; ++x) {
-      v4_t v;
-      v4_fromint(v, p[x]);
-      v4_mix(v, col, t);
-      p[x] = v4_toint(v);
+      __m128 f = ps_fromint(p[x]);
+      p[x] = ps_toint(ps_madd(f, m, a));
     }
   }
 
@@ -195,8 +166,6 @@ static int g_clipline(float *x0, float *y0, float *x1, float *y1)
 
 void g_line(float x0, float y0, float x1, float y1, v4_t col)
 {
-  const float t = col[3];
-
   if (!g_clipline(&x0, &y0, &x1, &y1))
     return;
 
@@ -210,7 +179,6 @@ void g_line(float x0, float y0, float x1, float y1, v4_t col)
   g_assert(iy0 >= 0 && iy0 < G_YRES);
   g_assert(iy1 >= 0 && iy1 < G_YRES);
 
-  u32_t *p = (u32_t *)g_fb + iy0*G_XRES + ix0;
   int dx = ix1-ix0;
   int dy = iy1-iy0;
   idx_t e0 = dx > 0 ? 1 : -1;
@@ -227,11 +195,14 @@ void g_line(float x0, float y0, float x1, float y1, v4_t col)
   step0 += e0;
   step1 += e1;
   n = i;
+
+  float t = col[3];
+  __m128 m = _mm_set1_ps(1.0f-t);
+  __m128 a = ps_scale1(_mm_load_ps(col), t);
+  u32_t *p = (u32_t *)g_fb + iy0*G_XRES + ix0;
   do {
-    v4_t v;
-    v4_fromint(v, *p);
-    v4_mix(v, col, t);
-    *p = v4_toint(v);
+    __m128 f = ps_fromint(*p);
+    *p = ps_toint(ps_madd(f, m, a));
     d += j;
     if (d >= i)
       d -= i, p += step0;

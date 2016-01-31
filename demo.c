@@ -1,5 +1,4 @@
 #include <math.h>
-#define USE_SSE
 #define GFX_C
 #include "gfx.h"
 
@@ -13,6 +12,7 @@ static void draw(double t)
   g_clear((v4_t){0.2f, 0.2f, 0.4f, 0.0f});
 
   v4_t col = { 1.0f, 0.0f, 1.0f, 1.0f };
+  col[3] = 0.5f+0.5f*cosf(ang*2.0f);
 
   float lx = 300.0f*cosf(ang);
   float ly = 300.0f*sinf(ang);
@@ -20,7 +20,6 @@ static void draw(double t)
 
   col[0] = 1.0f;
   col[2] = 0.0f;
-  col[3] = 0.5f+0.5f*cosf(ang*2.0f);
   float sz = 256.0f;
   g_rect(mx, my, sz, sz, col);
 }

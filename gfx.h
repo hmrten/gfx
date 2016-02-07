@@ -44,6 +44,13 @@ extern u64_t g_perf[64][2];
 #define g_perfend(id, n) (g_perf[id][0] = __rdtsc()-perf_##id_t0,\
                           g_perf[id][1] = (n))
 
+#define g_min(a, b) ((a) < (b) ? (a) : (b))
+#define g_max(a, b) ((a) > (b) ? (a) : (b))
+#define g_min3(a, b, c) (g_min(g_min(a, b), c))
+#define g_max3(a, b, c) (g_max(g_max(a, b), c))
+#define g_min4(a, b, c, d) (g_min(g_min3(a, b, c), d))
+#define g_max4(a, b, c, d) (g_max(g_max3(a, b, c), d))
+
 int g_loop(double t, double dt);
 int g_event(u32_t *ep);
 
@@ -53,6 +60,8 @@ void g_delay(int ms);
 void g_clear(v4_t col);
 void g_rect(float x, float y, float w, float h, v4_t col);
 void g_line(float x0, float y0, float x1, float y1, v4_t col);
+
+void g_texquad(float x, float y, v4_t m, v4_t col);
 
 INLINE __m128 ps_fromint(u32_t i)
 {
@@ -123,10 +132,8 @@ void g_rect(float x, float y, float w, float h, v4_t col)
   __m128 a = ps_scale1(_mm_load_ps(col), t);
   u32_t *p = (u32_t *)g_fb + iy0*G_XRES + ix0;
   for (idx_t y=0; y<ih; ++y, p+=G_XRES) {
-    for (idx_t x=0; x<iw; ++x) {
-      __m128 f = ps_fromint(p[x]);
-      p[x] = ps_toint(ps_madd(f, m, a));
-    }
+    for (idx_t x=0; x<iw; ++x)
+      p[x] = ps_toint(ps_madd(ps_fromint(p[x]), m, a));
   }
 
   g_perfend(0, iw*ih);
@@ -201,14 +208,75 @@ void g_line(float x0, float y0, float x1, float y1, v4_t col)
   __m128 a = ps_scale1(_mm_load_ps(col), t);
   u32_t *p = (u32_t *)g_fb + iy0*G_XRES + ix0;
   do {
-    __m128 f = ps_fromint(*p);
-    *p = ps_toint(ps_madd(f, m, a));
+    *p = ps_toint(ps_madd(ps_fromint(*p), m, a));
     d += j;
     if (d >= i)
       d -= i, p += step0;
     else
       p += step1;
   } while (n--);
+}
+
+static const float g_texw = 128.0f;
+static const float g_texh = 128.0f;
+
+void g_texquad(float x, float y, v4_t m, v4_t col)
+{
+  g_perfbegin(0);
+
+  m[0] *= g_texw;
+  m[2] *= g_texw;
+  m[1] *= g_texh;
+  m[3] *= g_texh;
+
+  x -= 0.5f*(m[0]+m[2]);
+  y -= 0.5f*(m[1]+m[3]);
+
+  float bx[] = { x, x+m[0], x+m[0]+m[2], x+m[2] };
+  float by[] = { y, y+m[1], y+m[1]+m[3], y+m[3] };
+  int xmin = (int)g_min4(bx[0], bx[1], bx[2], bx[3]);
+  int xmax = (int)g_max4(bx[0], bx[1], bx[2], bx[3]);
+  int ymin = (int)g_min4(by[0], by[1], by[2], by[3]);
+  int ymax = (int)g_max4(by[0], by[1], by[2], by[3]);
+  if (xmin < 0) xmin = 0;
+  if (ymin < 0) ymin = 0;
+  if (xmax > G_XRES-1) xmax = G_XRES-1;
+  if (ymax > G_YRES-1) ymax = G_YRES-1;
+
+  float d01 = 1.0f / sqrtf(m[0]*m[0] + m[1]*m[1]);
+  float d23 = 1.0f / sqrtf(m[2]*m[2] + m[3]*m[3]);
+  d01 *= d01;
+  d23 *= d23;
+  float dm[] = { d01*m[0], d01*m[1], d23*m[2], d23*m[3] };
+  float sx = (float)xmin - x;
+  float sy = (float)ymin - y;
+  float ur = sx*dm[0] + sy*dm[1];
+  float vr = sx*dm[2] + sy*dm[3];
+
+  idx_t w = xmax-xmin+1;
+  idx_t h = ymax-ymin+1;
+  u32_t *prow = (u32_t *)g_fb + ymin*G_XRES + xmin;
+  u32_t *plast = (u32_t *)g_fb + ymax*G_XRES;
+  while (prow <= plast) {
+    float u = ur;
+    float v = vr;
+    for (idx_t i=0; i<w; ++i) {
+      if (u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f) {
+        int tx = (int)(u*255.0f);
+        int ty = (int)(v*255.0f);
+        prow[i] = (ty<<8) | tx;
+      } else {
+        prow[i] = 0xCCCCCC;
+      }
+      u += dm[0];
+      v += dm[2];
+    }
+    ur += dm[1];
+    vr += dm[3];
+    prow += G_XRES;
+  }
+
+  g_perfend(0, w*h);
 }
 
 #ifdef GFX_WIN32

@@ -6,12 +6,20 @@ static u8_t keys[256];
 static float mx=G_XRES/2, my=G_YRES/2;
 static float pt_x=G_XRES/2, pt_y=G_YRES/2;
 
+
 static void draw(double t)
 {
   float ang = (float)t;
   g_clear((v4_t){0.2f, 0.2f, 0.4f, 0.0f});
 
-  v4_t col = { 1.0f, 0.0f, 1.0f, 1.0f };
+  float ca = cosf(ang);
+  float sa = sinf(ang);
+  float zx = 1.0f + 0.5f*cosf(ang);
+  float zy = zx;
+  v4_t m = { zx*ca, -zx*sa, zy*sa, zy*ca };
+  g_texquad(G_XRES/2, G_YRES/2, m, 0);
+
+  /*v4_t col = { 1.0f, 0.0f, 1.0f, 1.0f };
   col[3] = 0.5f+0.5f*cosf(ang*2.0f);
 
   float lx = 300.0f*cosf(ang);
@@ -21,7 +29,7 @@ static void draw(double t)
   col[0] = 1.0f;
   col[2] = 0.0f;
   float sz = 256.0f;
-  g_rect(mx, my, sz, sz, col);
+  g_rect(mx, my, sz, sz, col);*/
 }
 
 int g_loop(double t, double dt)

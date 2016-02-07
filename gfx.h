@@ -46,10 +46,6 @@ extern u64_t g_perf[64][2];
 
 #define g_min(a, b) ((a) < (b) ? (a) : (b))
 #define g_max(a, b) ((a) > (b) ? (a) : (b))
-#define g_min3(a, b, c) (g_min(g_min(a, b), c))
-#define g_max3(a, b, c) (g_max(g_max(a, b), c))
-#define g_min4(a, b, c, d) (g_min(g_min3(a, b, c), d))
-#define g_max4(a, b, c, d) (g_max(g_max3(a, b, c), d))
 
 int g_loop(double t, double dt);
 int g_event(u32_t *ep);
@@ -62,6 +58,24 @@ void g_rect(float x, float y, float w, float h, v4_t col);
 void g_line(float x0, float y0, float x1, float y1, v4_t col);
 
 void g_texquad(float x, float y, v4_t m, v4_t col);
+
+INLINE float v4_min(v4_t v)
+{
+  __m128 x = _mm_set_ss(v[0]);
+  x = _mm_min_ss(x, _mm_set_ss(v[1]));
+  x = _mm_min_ss(x, _mm_set_ss(v[2]));
+  x = _mm_min_ss(x, _mm_set_ss(v[3]));
+  return _mm_cvtss_f32(x);
+}
+
+INLINE float v4_max(v4_t v)
+{
+  __m128 x = _mm_set_ss(v[0]);
+  x = _mm_max_ss(x, _mm_set_ss(v[1]));
+  x = _mm_max_ss(x, _mm_set_ss(v[2]));
+  x = _mm_max_ss(x, _mm_set_ss(v[3]));
+  return _mm_cvtss_f32(x);
+}
 
 INLINE __m128 ps_fromint(u32_t i)
 {
@@ -232,12 +246,12 @@ void g_texquad(float x, float y, v4_t m, v4_t col)
   x -= 0.5f*(m[0]+m[2]);
   y -= 0.5f*(m[1]+m[3]);
 
-  float bx[] = { x, x+m[0], x+m[0]+m[2], x+m[2] };
-  float by[] = { y, y+m[1], y+m[1]+m[3], y+m[3] };
-  int xmin = (int)g_min4(bx[0], bx[1], bx[2], bx[3]);
-  int xmax = (int)g_max4(bx[0], bx[1], bx[2], bx[3]);
-  int ymin = (int)g_min4(by[0], by[1], by[2], by[3]);
-  int ymax = (int)g_max4(by[0], by[1], by[2], by[3]);
+  v4_t bx = { x, x+m[0], x+m[0]+m[2], x+m[2] };
+  v4_t by = { y, y+m[1], y+m[1]+m[3], y+m[3] };
+  int xmin = (int)v4_min(bx);
+  int xmax = (int)v4_max(bx);
+  int ymin = (int)v4_min(by);
+  int ymax = (int)v4_max(by);
   if (xmin < 0) xmin = 0;
   if (ymin < 0) ymin = 0;
   if (xmax > G_XRES-1) xmax = G_XRES-1;

@@ -15,7 +15,7 @@ static void draw(double t)
 
   float ca = cosf(ang);
   float sa = sinf(ang);
-  float zx = 1.0f + 0.5f*cosf(ang);
+  float zx = 1.0f + (0.5f+0.5f*cosf(ang));
   float zy = zx;
   v4_t m = { zx*ca, -zx*sa, zy*sa, zy*ca };
   g_texquad(G_XRES/2, G_YRES/2, m, 0);

@@ -296,9 +296,12 @@ void g_texquad(float x, float y, v4_t m, v4_t col)
         u32_t tx = (int)(u*sw);
         u32_t ty = (int)(v*sh);
         u32_t tex = texptr[ty*tw+tx];
-        prow[i] = tex;
+        float t = (float)(tex>>24)*(1.0f/255.0f);
+        __m128 m = _mm_set1_ps(1.0f-t);
+        __m128 a = ps_scale1(ps_fromint(tex), t);
+        prow[i] = ps_toint(ps_madd(ps_fromint(prow[i]), m, a));
       } else {
-        prow[i] = 0xCCCCCC;
+        //prow[i] = 0xCCCCCC;
       }
       u += dm[0];
       v += dm[2];

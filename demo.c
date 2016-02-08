@@ -9,8 +9,9 @@ static float pt_x=G_XRES/2, pt_y=G_YRES/2;
 
 static void draw(double t)
 {
+  v4_t col = {0.2f, 0.2f, 0.4f, 0.0f};
   float ang = (float)t;
-  g_clear((v4_t){0.2f, 0.2f, 0.4f, 0.0f});
+  g_clear(col);
 
   float ca = cosf(ang);
   float sa = sinf(ang);
@@ -37,6 +38,9 @@ int g_loop(double t, double dt)
   u32_t ev, ep;
   while ((ev = g_event(&ep)) != 0) {
     switch (ev) {
+    case GE_INIT:
+      g_texload(0, "test_32.tga");
+      break;
     case GE_QUIT:
       return 0;
     case GE_KEYDOWN:

@@ -11,7 +11,7 @@
 
 enum {
   // events
-  GE_QUIT=1, GE_KEYDOWN, GE_KEYUP, GE_KEYCHAR, GE_MOUSE,
+  GE_INIT=1, GE_QUIT, GE_KEYDOWN, GE_KEYUP, GE_KEYCHAR, GE_MOUSE,
   // keycodes ('0'..'9' and 'a'..'z' as lowercase ascii)
   GK_BACK=8, GK_TAB=9, GK_RET=13, GK_ESC=27, GK_SPACE=32, GK_CTRL=128,
   GK_SHIFT, GK_ALT, GK_UP, GK_DOWN, GK_LEFT, GK_RIGHT, GK_INS, GK_DEL,
@@ -104,6 +104,17 @@ u64_t g_perf[64][2];
 
 static float g_xmaxf = (float)(G_XRES-1);
 static float g_ymaxf = (float)(G_YRES-1);
+
+typedef struct {
+  void *data;
+  u32_t w, h;
+  int   sx, sy, sw, sh;
+} texdef_t;
+
+#define G_TEXCOUNT 32
+
+static texdef_t g_texlist[G_TEXCOUNT];
+static u32_t    g_texcur;
 
 void g_clear(v4_t col)
 {
@@ -267,6 +278,12 @@ void g_texquad(float x, float y, v4_t m, v4_t col)
   float ur = sx*dm[0] + sy*dm[1];
   float vr = sx*dm[2] + sy*dm[3];
 
+  texdef_t *td = g_texlist + g_texcur;
+  u32_t tw = td->w;
+  u32_t *texptr = (u32_t *)td->data + td->sy*tw + td->sx;
+  float sw = (float)td->sw;
+  float sh = (float)td->sh;
+
   idx_t w = xmax-xmin+1;
   idx_t h = ymax-ymin+1;
   u32_t *prow = (u32_t *)g_fb + ymin*G_XRES + xmin;
@@ -276,9 +293,10 @@ void g_texquad(float x, float y, v4_t m, v4_t col)
     float v = vr;
     for (idx_t i=0; i<w; ++i) {
       if (u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f) {
-        int tx = (int)(u*255.0f);
-        int ty = (int)(v*255.0f);
-        prow[i] = (ty<<8) | tx;
+        u32_t tx = (int)(u*sw);
+        u32_t ty = (int)(v*sh);
+        u32_t tex = texptr[ty*tw+tx];
+        prow[i] = tex;
       } else {
         prow[i] = 0xCCCCCC;
       }
@@ -299,13 +317,51 @@ void g_texquad(float x, float y, v4_t m, v4_t col)
 #include <mmsystem.h>
 #include <stdio.h>
 
-static u32_t i_buf[G_XRES*G_YRES];
-static HWND  i_hw;
-static HDC   i_dc;
-static DWORD i_winsize;
-static DWORD i_qhead;
-static u32_t i_qdata[256][2];
-static DWORD i_qtail;
+static u32_t  i_buf[G_XRES*G_YRES];
+static HWND   i_hw;
+static HDC    i_dc;
+static DWORD  i_winsize;
+static DWORD  i_qhead;
+static u32_t  i_qdata[256][2];
+static DWORD  i_qtail;
+static HANDLE i_heap;
+
+void g_texload(u32_t slot, const char *name)
+{
+  u8_t hdr[18], type, depth;
+  u16_t w, h;
+  DWORD nread, toread;
+
+  g_assert(slot < G_TEXCOUNT);
+
+  HANDLE f = CreateFile(name, GENERIC_READ, 0, 0, OPEN_EXISTING,
+                        FILE_ATTRIBUTE_NORMAL, 0);
+  g_assert(f != INVALID_HANDLE_VALUE);
+
+  ReadFile(f, hdr, sizeof hdr, &nread, 0);
+  g_assert(nread == sizeof hdr);
+
+  type = hdr[0x02];
+  w = (hdr[0x0D] << 8) | hdr[0x0C];
+  h = (hdr[0x0F] << 8) | hdr[0x0E];
+  depth = hdr[0x10];
+
+  g_assert(type == 2 && depth == 32);
+
+  texdef_t *td = g_texlist + g_texcur;
+  toread = w*h*4;
+  td->data = HeapAlloc(i_heap, 0, toread);
+  td->w = w;
+  td->h = h;
+  td->sx = 0;
+  td->sy = 0;
+  td->sw = w;
+  td->sh = h;
+  ReadFile(f, td->data, toread, &nread, 0);
+  g_assert(nread == toread);
+
+  CloseHandle(f);
+}
 
 void g_ods(const char *fmt, ...)
 {
@@ -475,6 +531,8 @@ __declspec(noreturn) void WinMainCRTStartup(void)
   HDC   dc;
   u32_t dw, dh;
 
+  i_heap = GetProcessHeap();
+
   g_fb = i_buf;
 
   timeBeginPeriod(1);
@@ -488,6 +546,8 @@ __declspec(noreturn) void WinMainCRTStartup(void)
 
   hw = i_hw;
   _ReadWriteBarrier();
+
+  i_qadd(GE_INIT, 0);
 
   QueryPerformanceCounter(&tbase);
   for (;;) {

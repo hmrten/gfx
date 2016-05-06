@@ -1,18 +1,19 @@
-// gfx.h
-// Written in 2016 by Mårten Hansson <hmrten@gmail.com>
+/* gfx.h
+ * Written in 2016 by Mårten Hansson <hmrten@gmail.com> */
 
+#ifndef G_XRES
 #define G_XRES 640
+#endif
+#ifndef G_YRES
 #define G_YRES 480
-
-#define INLINE static __inline
-
-#include <stddef.h>
-#include <intrin.h>
+#endif
 
 enum {
-  // events
-  GE_INIT=1, GE_QUIT, GE_KEYDOWN, GE_KEYUP, GE_KEYCHAR, GE_MOUSE,
-  // keycodes ('0'..'9' and 'a'..'z' as lowercase ascii)
+  /* return codes */
+  G_EXIT=1,
+  /* events */
+  G_WINSHUT = 1, G_KEYDOWN, G_KEYUP, G_KEYCHAR, G_MOUSE,
+  /* keycodes ('0'..'9' and 'a'..'z' as lowercase ascii) */
   GK_BACK=8, GK_TAB=9, GK_RET=13, GK_ESC=27, GK_SPACE=32, GK_CTRL=128,
   GK_SHIFT, GK_ALT, GK_UP, GK_DOWN, GK_LEFT, GK_RIGHT, GK_INS, GK_DEL,
   GK_HOME, GK_END, GK_PGUP, GK_PGDN, GK_F1, GK_F2, GK_F3, GK_F4, GK_F5,
@@ -20,46 +21,61 @@ enum {
   GK_M4, GK_M5
 };
 
-typedef signed   char       i8_t;
-typedef unsigned char       u8_t;
-typedef signed   short     i16_t;
-typedef unsigned short     u16_t;
-typedef signed   int       i32_t;
-typedef unsigned int       u32_t;
-typedef signed   long long i64_t;
-typedef unsigned long long u64_t;
+typedef signed   __int8   s8;
+typedef unsigned __int8   u8;
+typedef signed   __int16 s16;
+typedef unsigned __int16 u16;
+typedef signed   __int32 s32;
+typedef unsigned __int32 u32;
+typedef signed   __int64 s64;
+typedef unsigned __int64 u64;
 
-typedef ptrdiff_t idx_t;
+typedef __declspec(align(16)) float v4[4];
 
-typedef __declspec(align(16)) float v4_t[4];
+extern void *g_pixels;
+extern u32   g_ticks;
+extern u32   g_xwin;
+extern u32   g_ywin;
+extern u64   g_perf[64][2];
 
-extern void *g_fb;
-extern u32_t g_dw;
-extern u32_t g_dh;
-extern u64_t g_perf[64][2];
+#define g_assert(p) do { if (!(p)) *(volatile char *)0 = 0xCC; } while(0)
 
-#define g_assert(p) do { if (!(p)) *(volatile char *)0 = 1; } while(0)
-
-#define g_perfbegin(id) u64_t perf_##id_t0 = __rdtsc()
-#define g_perfend(id, n) (g_perf[id][0] = __rdtsc()-perf_##id_t0,\
-                          g_perf[id][1] = (n))
+#define g_perfbgn(i)    (g_perf[i][0] = __rdtsc())
+#define g_perfend(i, n) (g_perf[i][0] = __rdtsc() - g_perf[i][0], \
+                         g_perf[i][1] = (n))
 
 #define g_min(a, b) ((a) < (b) ? (a) : (b))
 #define g_max(a, b) ((a) > (b) ? (a) : (b))
 
-int g_loop(double t, double dt);
-int g_event(u32_t *ep);
+int   g_event(int *, int *);
+void  g_winsize(int, int);
+void  g_wintext(const char *);
+void  g_delay(int);
+void  g_ods(const char *, ...);
+void *g_readtga(const char *, int *, int *);
+void  g_clear(v4);
+void  g_rect(float, float, float, float, v4);
+void  g_line(float, float, float, float, v4);
+void  g_sprite(float, float, v4, v4, const void *, int, int, int *);
 
-void g_ods(const char *fmt, ...);
-void g_delay(int ms);
+int   g_setup(void);
+int   g_frame(double, double);
 
-void g_clear(v4_t col);
-void g_rect(float x, float y, float w, float h, v4_t col);
-void g_line(float x0, float y0, float x1, float y1, v4_t col);
+#ifdef GFX_IMPL
+#include <stdlib.h>
+#include <stdio.h>
+#include <intrin.h>
 
-void g_texquad(float x, float y, v4_t m, v4_t col);
+void *g_pixels;
+u32   g_ticks;
+u32   g_xwin;
+u32   g_ywin;
+u64   g_perf[64][2];
 
-INLINE float v4_min(v4_t v)
+static const float g_xmaxf = (float)(G_XRES-1);
+static const float g_ymaxf = (float)(G_YRES-1);
+
+static __inline float v4_min(v4 v)
 {
   __m128 x = _mm_set_ss(v[0]);
   x = _mm_min_ss(x, _mm_set_ss(v[1]));
@@ -68,7 +84,7 @@ INLINE float v4_min(v4_t v)
   return _mm_cvtss_f32(x);
 }
 
-INLINE float v4_max(v4_t v)
+static __inline float v4_max(v4 v)
 {
   __m128 x = _mm_set_ss(v[0]);
   x = _mm_max_ss(x, _mm_set_ss(v[1]));
@@ -77,14 +93,14 @@ INLINE float v4_max(v4_t v)
   return _mm_cvtss_f32(x);
 }
 
-INLINE __m128 ps_fromint(u32_t i)
+static __inline __m128 ps_fromint(u32 i)
 {
   __m128i sm = _mm_set_epi32(0x80808003, 0x80808000, 0x80808001, 0x80808002);
   __m128i pi = _mm_shuffle_epi8(_mm_cvtsi32_si128(i), sm);
   return _mm_mul_ps(_mm_cvtepi32_ps(pi), _mm_set1_ps(1.0f/255.0f));
 }
 
-INLINE u32_t ps_toint(__m128 ps)
+static __inline u32 ps_toint(__m128 ps)
 {
   __m128i pi = _mm_cvttps_epi32(_mm_mul_ps(ps, _mm_set1_ps(255.0f)));
   __m128i zi = _mm_setzero_si128();
@@ -96,51 +112,62 @@ INLINE u32_t ps_toint(__m128 ps)
 #define ps_madd(x, y, z) _mm_add_ps(_mm_mul_ps(x, y), z)
 #define ps_scale1(p, s) _mm_mul_ps(p, _mm_set1_ps(s))
 
-#ifdef GFX_C
-void *g_fb;
-u32_t g_dw;
-u32_t g_dh;
-u64_t g_perf[64][2];
-
-static float g_xmaxf = (float)(G_XRES-1);
-static float g_ymaxf = (float)(G_YRES-1);
-
-typedef struct {
-  void *data;
-  u32_t w, h;
-  int   sx, sy, sw, sh;
-} texdef_t;
-
-#define G_TEXCOUNT 32
-
-static texdef_t g_texlist[G_TEXCOUNT];
-static u32_t    g_texcur;
-
-void g_clear(v4_t col)
+void *g_readtga(const char *path, int *ximg, int *yimg)
 {
-  __m128 ps = _mm_load_ps(col);
-  __stosd((unsigned long *)g_fb, ps_toint(ps), G_XRES*G_YRES);
+  u8 hdr[18], type, depth;
+  size_t w, h, n;
+  FILE *f = fopen(path, "rb");
+
+  g_assert(f);
+
+  n = fread(hdr, 1, sizeof hdr, f);
+  g_assert(n == sizeof hdr);
+
+  type = hdr[0x02];
+  w = (hdr[0x0D] << 8) | hdr[0x0C];
+  h = (hdr[0x0F] << 8) | hdr[0x0E];
+  depth = hdr[0x10];
+
+  g_assert(type == 2 && depth == 32);
+
+  void *img = malloc(w*h*4);
+  g_assert(img);
+
+  n = fread(img, 1, w*h*4, f);
+  g_assert(n == w*h*4);
+  fclose(f);
+
+  *ximg = (int)w;
+  *yimg = (int)h;
+
+  return img;
 }
 
-void g_rect(float x, float y, float w, float h, v4_t col)
+void g_clear(v4 col)
 {
-  g_perfbegin(0);
+  __m128 ps = _mm_load_ps(col);
+  __stosd(g_pixels, ps_toint(ps), G_XRES*G_YRES);
+}
+
+void g_rect(float x, float y, float w, float h, v4 col)
+{
+  g_perfbgn(0);
 
   float halfw = 0.5f*w;
   float halfh = 0.5f*h;
 
-  idx_t ix0 = (idx_t)(x-halfw);
-  idx_t ix1 = (idx_t)(x+halfw);
-  idx_t iy0 = (idx_t)(y-halfh);
-  idx_t iy1 = (idx_t)(y+halfh);
+  int ix0 = (int)(x-halfw);
+  int ix1 = (int)(x+halfw);
+  int iy0 = (int)(y-halfh);
+  int iy1 = (int)(y+halfh);
 
   if (ix0 < 0) ix0 = 0;
   if (ix1 > G_XRES) ix1 = G_XRES;
   if (iy0 < 0) iy0 = 0;
   if (iy1 > G_YRES) iy1 = G_YRES;
 
-  idx_t iw = (idx_t)(ix1-ix0);
-  idx_t ih = (idx_t)(iy1-iy0);
+  int iw = ix1-ix0;
+  int ih = iy1-iy0;
 
   if (iw <= 0 || ih <= 0) {
     g_perfend(0, 1);
@@ -155,10 +182,12 @@ void g_rect(float x, float y, float w, float h, v4_t col)
   float t = col[3];
   __m128 m = _mm_set1_ps(1.0f-t);
   __m128 a = ps_scale1(_mm_load_ps(col), t);
-  u32_t *p = (u32_t *)g_fb + iy0*G_XRES + ix0;
-  for (idx_t y=0; y<ih; ++y, p+=G_XRES) {
-    for (idx_t x=0; x<iw; ++x)
-      p[x] = ps_toint(ps_madd(ps_fromint(p[x]), m, a));
+  u32 *p = (u32 *)g_pixels + iy0*G_XRES + ix0;
+  for (int y=0; y<ih; ++y) {
+    u32 *xp = p;
+    for (int x=0; x<iw; ++x)
+      *xp++ = ps_toint(ps_madd(ps_fromint(p[x]), m, a));
+    p += G_XRES;
   }
 
   g_perfend(0, iw*ih);
@@ -196,7 +225,7 @@ static int g_clipline(float *x0, float *y0, float *x1, float *y1)
   return 1;
 }
 
-void g_line(float x0, float y0, float x1, float y1, v4_t col)
+void g_line(float x0, float y0, float x1, float y1, v4 col)
 {
   if (!g_clipline(&x0, &y0, &x1, &y1))
     return;
@@ -213,10 +242,10 @@ void g_line(float x0, float y0, float x1, float y1, v4_t col)
 
   int dx = ix1-ix0;
   int dy = iy1-iy0;
-  idx_t e0 = dx > 0 ? 1 : -1;
-  idx_t e1 = e0;
-  idx_t step0 = dy > 0 ? G_XRES : -G_XRES;
-  idx_t step1 = 0;
+  size_t e0 = dx > 0 ? 1 : -1;
+  size_t e1 = e0;
+  size_t step0 = dy > 0 ? G_XRES : -G_XRES;
+  size_t step1 = 0;
   int i = dx > 0 ? dx : -dx;
   int j = dy > 0 ? dy : -dy;
   int d, n;
@@ -231,7 +260,7 @@ void g_line(float x0, float y0, float x1, float y1, v4_t col)
   float t = col[3];
   __m128 m = _mm_set1_ps(1.0f-t);
   __m128 a = ps_scale1(_mm_load_ps(col), t);
-  u32_t *p = (u32_t *)g_fb + iy0*G_XRES + ix0;
+  u32 *p = (u32 *)g_pixels + iy0*G_XRES + ix0;
   do {
     *p = ps_toint(ps_madd(ps_fromint(*p), m, a));
     d += j;
@@ -242,23 +271,24 @@ void g_line(float x0, float y0, float x1, float y1, v4_t col)
   } while (n--);
 }
 
-static const float g_texw = 128.0f;
-static const float g_texh = 128.0f;
-
-void g_texquad(float x, float y, v4_t m, v4_t col)
+void g_sprite(float x, float y, v4 axis, v4 tint,
+              const void *img, int ximg, int yimg, int *rimg)
 {
-  g_perfbegin(0);
+  g_perfbgn(0);
 
-  m[0] *= g_texw;
-  m[2] *= g_texw;
-  m[1] *= g_texh;
-  m[3] *= g_texh;
+  float fximg = (float)ximg;
+  float fyimg = (float)yimg;
 
-  x -= 0.5f*(m[0]+m[2]);
-  y -= 0.5f*(m[1]+m[3]);
+  axis[0] *= fximg;
+  axis[2] *= fximg;
+  axis[1] *= fyimg;
+  axis[3] *= fyimg;
 
-  v4_t bx = { x, x+m[0], x+m[0]+m[2], x+m[2] };
-  v4_t by = { y, y+m[1], y+m[1]+m[3], y+m[3] };
+  x -= 0.5f*(axis[0]+axis[2]);
+  y -= 0.5f*(axis[1]+axis[3]);
+
+  v4 bx = { x, x+axis[0], x+axis[0]+axis[2], x+axis[2] };
+  v4 by = { y, y+axis[1], y+axis[1]+axis[3], y+axis[3] };
   int xmin = (int)v4_min(bx);
   int xmax = (int)v4_max(bx);
   int ymin = (int)v4_min(by);
@@ -268,46 +298,45 @@ void g_texquad(float x, float y, v4_t m, v4_t col)
   if (xmax > G_XRES-1) xmax = G_XRES-1;
   if (ymax > G_YRES-1) ymax = G_YRES-1;
 
-  float d01 = 1.0f / sqrtf(m[0]*m[0] + m[1]*m[1]);
-  float d23 = 1.0f / sqrtf(m[2]*m[2] + m[3]*m[3]);
-  d01 *= d01;
-  d23 *= d23;
-  float dm[] = { d01*m[0], d01*m[1], d23*m[2], d23*m[3] };
+  float da01 = 1.0f / sqrtf(axis[0]*axis[0] + axis[1]*axis[1]);
+  float da23 = 1.0f / sqrtf(axis[2]*axis[2] + axis[3]*axis[3]);
+  da01 *= da01;
+  da23 *= da23;
+  float dx0 = da01*axis[0];
+  float dx1 = da01*axis[2];
+  float dy0 = da23*axis[1];
+  float dy1 = da23*axis[3];
   float sx = (float)xmin - x;
   float sy = (float)ymin - y;
-  float ur = sx*dm[0] + sy*dm[1];
-  float vr = sx*dm[2] + sy*dm[3];
+  float ur = sx*dx0 + sy*dy0;
+  float vr = sx*dx1 + sy*dy1;
 
-  texdef_t *td = g_texlist + g_texcur;
-  u32_t tw = td->w;
-  u32_t *texptr = (u32_t *)td->data + td->sy*tw + td->sx;
-  float sw = (float)td->sw;
-  float sh = (float)td->sh;
+  int w = xmax-xmin+1;
+  int h = ymax-ymin+1;
 
-  idx_t w = xmax-xmin+1;
-  idx_t h = ymax-ymin+1;
-  u32_t *prow = (u32_t *)g_fb + ymin*G_XRES + xmin;
-  u32_t *plast = (u32_t *)g_fb + ymax*G_XRES;
+  u32 *pimg = (u32 *)img;
+  u32 *prow = (u32 *)g_pixels + ymin*G_XRES + xmin;
+  u32 *plast = (u32 *)g_pixels + ymax*G_XRES;
   while (prow <= plast) {
     float u = ur;
     float v = vr;
-    for (idx_t i=0; i<w; ++i) {
+    for (int i=0; i<w; ++i) {
       if (u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f) {
-        u32_t tx = (int)(u*sw);
-        u32_t ty = (int)(v*sh);
-        u32_t tex = texptr[ty*tw+tx];
-        float t = (float)(tex>>24)*(1.0f/255.0f);
+        u32 ix = (int)(u*fximg);
+        u32 iy = (int)(v*fyimg);
+        u32 ipix = pimg[iy*(u32)ximg+ix];
+        float t = (float)(ipix>>24)*(1.0f/255.0f);
         __m128 m = _mm_set1_ps(1.0f-t);
-        __m128 a = ps_scale1(ps_fromint(tex), t);
+        __m128 a = ps_scale1(ps_fromint(ipix), t);
         prow[i] = ps_toint(ps_madd(ps_fromint(prow[i]), m, a));
       } else {
         //prow[i] = 0xCCCCCC;
       }
-      u += dm[0];
-      v += dm[2];
+      u += dx0;
+      v += dx1;
     }
-    ur += dm[1];
-    vr += dm[3];
+    ur += dy0;
+    vr += dy1;
     prow += G_XRES;
   }
 
@@ -318,85 +347,19 @@ void g_texquad(float x, float y, v4_t m, v4_t col)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <mmsystem.h>
-#include <stdio.h>
 
-static u32_t  i_buf[G_XRES*G_YRES];
+static u32    i_pixels[G_XRES*G_YRES];
 static HWND   i_hw;
 static HDC    i_dc;
-static DWORD  i_winsize;
-static DWORD  i_qhead;
-static u32_t  i_qdata[256][2];
-static DWORD  i_qtail;
+static u32    i_winsize;
+static u32    i_qhead;
+static u32    i_qdata[256][2];
+static u32    i_qtail;
 static HANDLE i_heap;
 
-void g_texload(u32_t slot, const char *name)
+static int i_addevent(u32 ev, u32 ep)
 {
-  u8_t hdr[18], type, depth;
-  u16_t w, h;
-  DWORD nread, toread;
-
-  g_assert(slot < G_TEXCOUNT);
-
-  HANDLE f = CreateFile(name, GENERIC_READ, 0, 0, OPEN_EXISTING,
-                        FILE_ATTRIBUTE_NORMAL, 0);
-  g_assert(f != INVALID_HANDLE_VALUE);
-
-  ReadFile(f, hdr, sizeof hdr, &nread, 0);
-  g_assert(nread == sizeof hdr);
-
-  type = hdr[0x02];
-  w = (hdr[0x0D] << 8) | hdr[0x0C];
-  h = (hdr[0x0F] << 8) | hdr[0x0E];
-  depth = hdr[0x10];
-
-  g_assert(type == 2 && depth == 32);
-
-  texdef_t *td = g_texlist + g_texcur;
-  toread = w*h*4;
-  td->data = HeapAlloc(i_heap, 0, toread);
-  td->w = w;
-  td->h = h;
-  td->sx = 0;
-  td->sy = 0;
-  td->sw = w;
-  td->sh = h;
-  ReadFile(f, td->data, toread, &nread, 0);
-  g_assert(nread == toread);
-
-  CloseHandle(f);
-}
-
-void g_ods(const char *fmt, ...)
-{
-  static char buf[1024];
-  va_list args;
-  va_start(args, fmt);
-  vsprintf(buf, fmt, args);
-  OutputDebugStringA(buf);
-  va_end(args);
-}
-
-int g_event(u32_t *ep)
-{
-  DWORD head = i_qhead, tail = i_qtail;
-  u32_t ev;
-  _ReadWriteBarrier();
-  if (head == tail) return 0;
-  ev  = i_qdata[head][0];
-  *ep = i_qdata[head][1];
-  _ReadWriteBarrier();
-  i_qhead = (head+1) & 255;
-  return ev;
-}
-
-void g_delay(int ms)
-{
-  Sleep((DWORD)ms);
-}
-
-static int i_qadd(u32_t ev, u32_t ep)
-{
-  DWORD head = i_qhead, tail = i_qtail, ntail = (tail+1) & 255;
+  u32 head = i_qhead, tail = i_qtail, ntail = (tail+1) & 255;
   _ReadWriteBarrier();
   if (ntail == head) return 0;
   i_qdata[tail][0] = ev;
@@ -406,20 +369,66 @@ static int i_qadd(u32_t ev, u32_t ep)
   return 1;
 }
 
-static const BYTE i_vkmap[256] = {
-  0, 0, 0, 0, 0, 0, 0, 0, '\b', '\t', 0, 0, 0, '\r', 0, 0, GK_SHIFT,
-  GK_CTRL, GK_ALT, 0, 0, 0, 0, 0, 0, 0, 0, GK_ESC, 0, 0, 0, 0, ' ',
-  GK_PGUP, GK_PGDN, GK_END, GK_HOME, GK_LEFT, GK_UP, GK_RIGHT,
-  GK_DOWN, 0, 0, 0, 0, GK_INS, GK_DEL, 0, '0', '1', '2', '3', '4', '5',
-  '6', '7', '8', '9', 0, 0, 0, 0, 0, 0, 0, 'a', 'b', 'c', 'd', 'e', 'f',
-  'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
-  'u', 'v', 'w', 'x', 'y', 'z', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, GK_F1, GK_F2, GK_F3, GK_F4, GK_F5, GK_F6,
-  GK_F7, GK_F8, GK_F9, GK_F10, GK_F11, GK_F12
-};
+int g_event(int *ex, int *ey)
+{
+  u32 head = i_qhead, tail = i_qtail, ev, ep;
+  _ReadWriteBarrier();
+  if (head == tail) return 0;
+  ev = i_qdata[head][0];
+  ep = i_qdata[head][1];
+  _ReadWriteBarrier();
+  i_qhead = (head+1) & 255;
+  *ex = (int)(ep&0xFFFF);
+  *ey = (int)(ep>>16);
+  return (int)ev;
+}
+
+void g_winsize(int w, int h)
+{
+  HWND hw = i_hw;
+  RECT r = {0, 0, w, h};
+  _ReadWriteBarrier();
+  AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, 0);
+  SetWindowPos(hw, HWND_TOP, 0, 0, r.right-r.left, r.bottom-r.top,
+               SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
+}
+
+void g_wintext(const char *text)
+{
+  HWND hw = i_hw;
+  _ReadWriteBarrier();
+  SetWindowTextA(hw, text);
+}
+
+void g_delay(int ms)
+{
+  Sleep((DWORD)ms);
+}
+
+void g_ods(const char *fmt, ...)
+{
+  char buf[512];
+  va_list args;
+  va_start(args, fmt);
+  vsprintf(buf, fmt, args);
+  OutputDebugStringA(buf);
+  va_end(args);
+}
+
 static LRESULT CALLBACK i_winproc(HWND hw, UINT msg, WPARAM wp, LPARAM lp)
 {
-  u32_t ev=0, ep=0;
+  static const u8 vkmap[256] = {
+    0, 0, 0, 0, 0, 0, 0, 0, '\b', '\t', 0, 0, 0, '\r', 0, 0, GK_SHIFT,
+    GK_CTRL, GK_ALT, 0, 0, 0, 0, 0, 0, 0, 0, GK_ESC, 0, 0, 0, 0, ' ',
+    GK_PGUP, GK_PGDN, GK_END, GK_HOME, GK_LEFT, GK_UP, GK_RIGHT,
+    GK_DOWN, 0, 0, 0, 0, GK_INS, GK_DEL, 0, '0', '1', '2', '3', '4', '5',
+    '6', '7', '8', '9', 0, 0, 0, 0, 0, 0, 0, 'a', 'b', 'c', 'd', 'e', 'f',
+    'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+    'u', 'v', 'w', 'x', 'y', 'z', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, GK_F1, GK_F2, GK_F3, GK_F4, GK_F5, GK_F6,
+    GK_F7, GK_F8, GK_F9, GK_F10, GK_F11, GK_F12
+  };
+  u32 ev=0, ep=0;
   switch (msg) {
   case WM_SYSKEYUP:
   case WM_SYSKEYDOWN:  if ((lp&(1<<29)) && !(lp&(1<<31)) && wp == VK_F4) {
@@ -428,33 +437,35 @@ static LRESULT CALLBACK i_winproc(HWND hw, UINT msg, WPARAM wp, LPARAM lp)
                        }
   case WM_KEYUP:
   case WM_KEYDOWN:     if (!(lp&(1<<30)) == !!(lp&(1<<31))) return 0;
-                       ev = (lp&(1<<31)) ? GE_KEYUP : GE_KEYDOWN;
-                       if ((ep = i_vkmap[wp & 255])) goto qadd;
+                       ev = (lp&(1<<31)) ? G_KEYUP : G_KEYDOWN;
+                       if ((ep = vkmap[wp & 255])) goto event;
                        return 0;
-  case WM_CHAR:        ev = GE_KEYCHAR; ep = (u32_t)wp; goto qadd;
+  case WM_CHAR:        ev = G_KEYCHAR; ep = (u32)wp; goto event;
   case WM_LBUTTONUP:   ep = GK_M1; goto mup;
   case WM_MBUTTONUP:   ep = GK_M2; goto mup;
   case WM_RBUTTONUP:   ep = GK_M3; goto mup;
-  case WM_LBUTTONDOWN: ep = GK_M1; goto mdn;
-  case WM_MBUTTONDOWN: ep = GK_M2; goto mdn;
-  case WM_RBUTTONDOWN: ep = GK_M3; goto mdn;
+  case WM_LBUTTONDOWN: ep = GK_M1; goto mdown;
+  case WM_MBUTTONDOWN: ep = GK_M2; goto mdown;
+  case WM_RBUTTONDOWN: ep = GK_M3; goto mdown;
   case WM_MOUSEWHEEL:  ep = ((int)wp>>16) / WHEEL_DELTA > 0 ? GK_M4 : GK_M5;
-                       i_qadd(GE_KEYDOWN, ep);
-                       i_qadd(GE_KEYUP, ep);
+                       i_addevent(G_KEYDOWN, ep);
+                       i_addevent(G_KEYUP, ep);
                        return 0;
-  case WM_MOUSEMOVE:   ev = GE_MOUSE;
-                       ep = (u32_t)lp;
-                       goto qadd;
-  case WM_SIZE:       _ReadWriteBarrier(); i_winsize = (DWORD)lp; return 0;
+  case WM_MOUSEMOVE:   ev = G_MOUSE;
+                       ep = (u32)lp;
+                       goto event;
+  case WM_SIZE:       _ReadWriteBarrier(); i_winsize = (u32)lp; return 0;
   case WM_ERASEBKGND: return 1;
   case WM_CLOSE:      PostQuitMessage(0); return 0;
   }
   return DefWindowProc(hw, msg, wp, lp);
-
-mup:  ev = GE_KEYUP; goto qadd;
-mdn:  ev = GE_KEYDOWN;
-qadd: i_qadd(ev, ep);
-      return 0;
+mup:
+  ev = G_KEYUP; goto event;
+mdown:
+  ev = G_KEYDOWN;
+event:
+  i_addevent(ev, ep);
+  return 0;
 }
 
 static DWORD WINAPI i_winloop(void *arg)
@@ -483,7 +494,7 @@ static DWORD WINAPI i_winloop(void *arg)
     TranslateMessage(&msg);
     DispatchMessage(&msg);
   }
-  i_qadd(GE_QUIT, 0);
+  i_addevent(G_WINSHUT, 0);
   return 0;
 }
 
@@ -492,7 +503,7 @@ static void i_dbgtime(HWND hw, double dt, double lt, double t)
   static char unit = 'M';
   static char str[256];
   static double ddt, ddt100, cdt, clt=1.0, ccy;
-  static u32_t ccyd;
+  static u32 ccyd;
   static int fps, cfps;
 
   ++fps;
@@ -501,8 +512,8 @@ static void i_dbgtime(HWND hw, double dt, double lt, double t)
     cdt = dt*1000.0;
     clt = lt*1000.0;
     cfps = (int)(fps / ddt);
-    u64_t cy = g_perf[0][0];
-    ccyd = (u32_t)(cy / g_perf[0][1]);
+    u64 cy = g_perf[0][0];
+    ccyd = (u32)(cy / g_perf[0][1]);
 
     if (cy < 100000) unit = 'K', ccy = cy*1e-3;
     else unit = 'M', ccy = cy*1e-6;
@@ -525,32 +536,27 @@ static void i_dbgtime(HWND hw, double dt, double lt, double t)
   }
 }
 
-__declspec(noreturn) void WinMainCRTStartup(void)
+int WinMain(HINSTANCE inst, HINSTANCE pinst, LPSTR cmdline, int cmdshow)
 {
   static BITMAPINFO bi = { sizeof(BITMAPINFOHEADER), G_XRES, -G_YRES, 1, 32 };
   LARGE_INTEGER tbase, tnow, tlast = { 0 }, tloop;
   double freq, t, dt, lt;
   HWND  hw;
   HDC   dc;
-  u32_t dw, dh;
+  u32   dw, dh;
 
+  g_pixels = i_pixels;
   i_heap = GetProcessHeap();
-
-  g_fb = i_buf;
-
   timeBeginPeriod(1);
-
   CreateThread(0, 0, i_winloop, 0, 0, 0);
-
   QueryPerformanceFrequency(&tnow);
   freq = 1.0 / tnow.QuadPart;
-
   do { _mm_pause(); dc = i_dc; _ReadWriteBarrier(); } while (!dc);
-
   hw = i_hw;
   _ReadWriteBarrier();
 
-  i_qadd(GE_INIT, 0);
+  if (g_setup() != 0)
+    return 1;
 
   QueryPerformanceCounter(&tbase);
   for (;;) {
@@ -565,21 +571,21 @@ __declspec(noreturn) void WinMainCRTStartup(void)
     dh = dw >> 16;
     dw &= 0xFFFF;
 
-    g_dw = dw;
-    g_dh = dh;
+    g_xwin = dw;
+    g_ywin = dh;
 
     QueryPerformanceCounter(&tnow);
-    if (!g_loop(t, dt))
+    if (g_frame(t, dt) != 0)
       break;
     QueryPerformanceCounter(&tloop);
     lt = freq * (tloop.QuadPart - tnow.QuadPart);
 
-    StretchDIBits(dc, 0, 0, dw, dh, 0, 0, G_XRES, G_YRES, i_buf, &bi,
+    StretchDIBits(dc, 0, 0, dw, dh, 0, 0, G_XRES, G_YRES, i_pixels, &bi,
                   DIB_RGB_COLORS, SRCCOPY);
     ValidateRect(hw, 0);
     i_dbgtime(hw, dt, lt, t);
   }
-  ExitProcess(0);
+  return 0;
 }
 #endif
 #endif

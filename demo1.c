@@ -1,6 +1,6 @@
 // test program for gfx.h
 #include <math.h>
-#define GFX_C
+#define GFX_IMPL
 #include "gfx.h"
 
 static void printkey(int k, int d)
@@ -18,34 +18,15 @@ static void printkey(int k, int d)
 #undef X
 }
 
-static int events(void)
-{
-  u32_t ev, ep;
-  while ((ev = g_event(&ep)) != 0) {
-    switch (ev) {
-    case GE_QUIT:    return 0;
-    case GE_KEYDOWN: printkey(ep, 1);
-                     if (ep == GK_ESC) return 0;
-                     break;
-    case GE_KEYUP:   printkey(ep, 0); break;
-    case GE_KEYCHAR: g_ods("char:");
-                     if (ep > 32 && ep < 128) g_ods(" '%c'", ep);
-                     g_ods(" [%02X]\n", ep);
-                     break;
-    case GE_MOUSE:   g_ods("mouse: %4d,%4d\n",
-                           (ep&0xFFFF)*G_XRES/g_dw, (ep>>16)*G_YRES/g_dh);
-                     break;
-    }
-  }
-  return 1;
-}
-
 static void draw(double t)
 {
   static float fxd = 1.0f / G_XRES;
   static float fyd = 1.0f / G_YRES;
   float fx, fy=0.0f, ft=(float)t;
-  u32_t *p = g_fb;
+  u32 *p = g_pixels;
+
+  g_perfbgn(0);
+
   for (int py=0; py<G_YRES; ++py, fy+=fyd, p+=G_XRES) {
     float s = 0.3f*sinf(fy*10.0f + ft);
     fx = 0.0f;
@@ -61,13 +42,42 @@ static void draw(double t)
       p[px] = (cr<<16) | (cg<<8) | cb;
     }
   }
+
+  g_perfend(0, 1);
 }
 
-int g_loop(double t, double dt)
+int g_setup(void)
 {
-  if (!events())
-    return 0;
+  return 0;
+}
+
+int g_frame(double t, double dt)
+{
+  int ev, ex, ey;
+
+  while ((ev = g_event(&ex, &ey)) != 0) {
+    switch (ev) {
+    case G_WINSHUT:
+      return G_EXIT;
+    case G_KEYDOWN:
+      printkey(ex, 1);
+      if (ex == GK_ESC) return G_EXIT;
+      break;
+    case G_KEYUP:
+      printkey(ex, 0);
+      break;
+    case G_KEYCHAR:
+      g_ods("char:");
+      if (ex > 32 && ex < 128) g_ods(" '%c'", ex);
+      g_ods(" [%02X]\n", ex);
+      break;
+    case G_MOUSE:
+      g_ods("mouse: %4d,%4d\n", ex*G_XRES/g_xwin, ey*G_YRES/g_ywin);
+      break;
+    }
+  }
 
   draw(t);
-  return 1;
+
+  return 0;
 }

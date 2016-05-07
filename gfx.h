@@ -185,8 +185,10 @@ void g_rect(float x, float y, float w, float h, v4 col)
   u32 *p = (u32 *)g_pixels + iy0*G_XRES + ix0;
   for (int y=0; y<ih; ++y) {
     u32 *xp = p;
-    for (int x=0; x<iw; ++x)
-      *xp++ = ps_toint(ps_madd(ps_fromint(p[x]), m, a));
+    for (int x=0; x<iw; ++x) {
+      u32 c = *xp;
+      *xp++ = ps_toint(ps_madd(ps_fromint(c), m, a));
+    }
     p += G_XRES;
   }
 

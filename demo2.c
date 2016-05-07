@@ -21,17 +21,17 @@ static void draw(double t)
   v4 axis = { xa*xs, -ya*xs, ya*ys, xa*ys };
   g_sprite(G_XRES/2, G_YRES/2, axis, 0, img, ximg, yimg, 0);
 
-  /*v4_t col = { 1.0f, 0.0f, 1.0f, 1.0f };
-  col[3] = 0.5f+0.5f*cosf(ang*2.0f);
+  v4 col2 = { 1.0f, 0.0f, 1.0f, 1.0f };
+  col2[3] = 0.5f+0.5f*cosf(ang*2.0f);
 
   float lx = 300.0f*cosf(ang);
   float ly = 300.0f*sinf(ang);
-  g_line(pt_x, pt_y, pt_x+lx, pt_y+ly, col);
+  g_line(pt_x, pt_y, pt_x+lx, pt_y+ly, col2);
 
-  col[0] = 1.0f;
-  col[2] = 0.0f;
+  col2[0] = 1.0f;
+  col2[2] = 0.0f;
   float sz = 256.0f;
-  g_rect(mx, my, sz, sz, col);*/
+  g_rect(mx, my, sz, sz, col2);
 }
 
 int g_setup(void)

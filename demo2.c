@@ -36,7 +36,7 @@ static void draw(double t)
 
 int g_setup(void)
 {
-  img = g_readtga("test_32.tga", &ximg, &yimg);
+  img = g_image("test_32.tga", &ximg, &yimg);
   return 0;
 }
 

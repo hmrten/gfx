@@ -52,7 +52,7 @@ void  g_winsize(int, int);
 void  g_wintext(const char *);
 void  g_delay(int);
 void  g_ods(const char *, ...);
-void *g_readtga(const char *, int *, int *);
+void *g_image(const char *, int *, int *);
 void  g_clear(v4);
 void  g_rect(float, float, float, float, v4);
 void  g_line(float, float, float, float, v4);
@@ -112,7 +112,7 @@ static __inline u32 ps_toint(__m128 ps)
 #define ps_madd(x, y, z) _mm_add_ps(_mm_mul_ps(x, y), z)
 #define ps_scale1(p, s) _mm_mul_ps(p, _mm_set1_ps(s))
 
-void *g_readtga(const char *path, int *ximg, int *yimg)
+static void *readtga(const char *path, int *ximg, int *yimg)
 {
   u8 hdr[18], type, depth;
   size_t w, h, n;
@@ -141,6 +141,11 @@ void *g_readtga(const char *path, int *ximg, int *yimg)
   *yimg = (int)h;
 
   return img;
+}
+
+void *g_image(const char *path, int *ximg, int *yimg)
+{
+  return readtga(path, ximg, yimg);
 }
 
 void g_clear(v4 col)

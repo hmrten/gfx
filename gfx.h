@@ -306,10 +306,8 @@ void g_sprite(float x, float y, v4 axis, v4 tint,
   if (xmax > G_XRES-1) xmax = G_XRES-1;
   if (ymax > G_YRES-1) ymax = G_YRES-1;
 
-  float da01 = 1.0f / sqrtf(axis[0]*axis[0] + axis[1]*axis[1]);
-  float da23 = 1.0f / sqrtf(axis[2]*axis[2] + axis[3]*axis[3]);
-  da01 *= da01;
-  da23 *= da23;
+  float da01 = 1.0f / (axis[0]*axis[0] + axis[1]*axis[1]);
+  float da23 = 1.0f / (axis[2]*axis[2] + axis[3]*axis[3]);
   float dx0 = da01*axis[0];
   float dx1 = da01*axis[2];
   float dy0 = da23*axis[1];

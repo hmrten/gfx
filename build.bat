@@ -7,6 +7,6 @@ set libs=kernel32.lib user32.lib gdi32.lib winmm.lib
 
 if not exist out mkdir out
 pushd out
-cl -DGFX_WIN32 %cflags% ..\demo1.c -link -subsystem:windows %lflags% %libs%
-cl -DGFX_WIN32 %cflags% ..\demo2.c -link -subsystem:windows %lflags% %libs%
+cl %cflags% ..\demo1.c -link -subsystem:windows %lflags% %libs%
+cl %cflags% ..\demo2.c -link -subsystem:windows %lflags% %libs%
 popd

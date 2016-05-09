@@ -183,9 +183,9 @@ void g_rect(float x, float y, float w, float h, v4 col)
   __m128 m = _mm_set1_ps(1.0f-t);
   __m128 a = ps_scale1(_mm_load_ps(col), t);
   u32 *p = (u32 *)g_pixels + iy0*G_XRES + ix0;
-  for (int y=0; y<ih; ++y) {
+  for (int i=0; i<ih; ++i) {
     u32 *xp = p;
-    for (int x=0; x<iw; ++x) {
+    for (int j=0; j<iw; ++j) {
       u32 c = *xp;
       *xp++ = ps_toint(ps_madd(ps_fromint(c), m, a));
     }
@@ -195,16 +195,16 @@ void g_rect(float x, float y, float w, float h, v4 col)
   g_perfend(0, iw*ih);
 }
 
-static int g_linetest(float p, float q, float *t)
+static int g_linetest(float p, float q, float *t0, float *t1)
 {
   float r = q / p;
   if (p==0.0f && q<0.0f) return 0;
   if (p < 0.0f) {
-    if      (r > t[1]) return 0;
-    else if (r > t[0]) t[0] = r;
+    if      (r > *t1) return 0;
+    else if (r > *t0) *t0 = r;
   } else if (p > 0.0f) {
-    if      (r < t[0]) return 0;
-    else if (r < t[1]) t[1] = r;
+    if      (r < *t0) return 0;
+    else if (r < *t1) *t1 = r;
   }
   return 1;
 }
@@ -215,15 +215,16 @@ static int g_clipline(float *x0, float *y0, float *x1, float *y1)
   float y = *y0;
   float dx = *x1 - x;
   float dy = *y1 - y;
-  float t[2] = { 0.0f, 1.0f };
-  if (!g_linetest(-dx, x, t)) return 0;
-  if (!g_linetest( dx, g_xmaxf-x, t)) return 0;
-  if (!g_linetest(-dy, y, t)) return 0;
-  if (!g_linetest( dy, g_ymaxf-y, t)) return 0;
-  *x0 = x + dx*t[0];
-  *y0 = y + dy*t[0];
-  *x1 = x + dx*t[1];
-  *y1 = y + dy*t[1];
+  float t0 = 0.0f;
+  float t1 = 1.0f;
+  if (!g_linetest(-dx, x, &t0, &t1)) return 0;
+  if (!g_linetest( dx, g_xmaxf-x, &t0, &t1)) return 0;
+  if (!g_linetest(-dy, y, &t0, &t1)) return 0;
+  if (!g_linetest( dy, g_ymaxf-y, &t0, &t1)) return 0;
+  *x0 = x + dx*t0;
+  *y0 = y + dy*t0;
+  *x1 = x + dx*t1;
+  *y1 = y + dy*t1;
   return 1;
 }
 
@@ -345,7 +346,6 @@ void g_sprite(float x, float y, v4 axis, v4 tint,
   g_perfend(0, w*h);
 }
 
-#ifdef GFX_WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <mmsystem.h>
@@ -500,11 +500,11 @@ static DWORD WINAPI i_winloop(void *arg)
   return 0;
 }
 
-static void i_dbgtime(HWND hw, double dt, double lt, double t)
+static void i_dbgtime(HWND hw, double t, double dt)
 {
   static char unit = 'M';
   static char str[256];
-  static double ddt, ddt100, cdt, clt=1.0, ccy;
+  static double ddt, ddt100, cdt, ccy;
   static u32 ccyd;
   static int fps, cfps;
 
@@ -512,7 +512,6 @@ static void i_dbgtime(HWND hw, double dt, double lt, double t)
   ddt += dt;
   if (ddt >= 1.0) {
     cdt = dt*1000.0;
-    clt = lt*1000.0;
     cfps = (int)(fps / ddt);
     u64 cy = g_perf[0][0];
     ccyd = (u32)(cy / g_perf[0][1]);
@@ -530,9 +529,9 @@ static void i_dbgtime(HWND hw, double dt, double lt, double t)
     int s = (int)(t-m*60.0);
     int c = (int)(t*100.0)%100;
     sprintf(str,
-            "%02d:%02d:%02d - %.2f ms / %4d fps (loop: %.2f ms / %4d fps)"
-            " (cycles: %.3f%c / %llu)",
-            m, s, c, cdt, cfps, clt, (int)(1000.0/clt), ccy, unit, ccyd);
+            "%02d:%02d:%02d - %.2f ms / %4d fps"
+            " (cycles: %.3f%c / %u)",
+            m, s, c, cdt, cfps, ccy, unit, ccyd);
     SetWindowText(hw, str);
     ddt100 = 0.0;
   }
@@ -541,8 +540,8 @@ static void i_dbgtime(HWND hw, double dt, double lt, double t)
 int WinMain(HINSTANCE inst, HINSTANCE pinst, LPSTR cmdline, int cmdshow)
 {
   static BITMAPINFO bi = { sizeof(BITMAPINFOHEADER), G_XRES, -G_YRES, 1, 32 };
-  LARGE_INTEGER tbase, tnow, tlast = { 0 }, tloop;
-  double freq, t, dt, lt;
+  LARGE_INTEGER tbase, tnow, tlast = { 0 };
+  double freq, t, dt;
   HWND  hw;
   HDC   dc;
   u32   dw, dh;
@@ -576,18 +575,14 @@ int WinMain(HINSTANCE inst, HINSTANCE pinst, LPSTR cmdline, int cmdshow)
     g_xwin = dw;
     g_ywin = dh;
 
-    QueryPerformanceCounter(&tnow);
     if (g_frame(t, dt) != 0)
       break;
-    QueryPerformanceCounter(&tloop);
-    lt = freq * (tloop.QuadPart - tnow.QuadPart);
 
     StretchDIBits(dc, 0, 0, dw, dh, 0, 0, G_XRES, G_YRES, i_pixels, &bi,
                   DIB_RGB_COLORS, SRCCOPY);
     ValidateRect(hw, 0);
-    i_dbgtime(hw, dt, lt, t);
+    i_dbgtime(hw, t, dt);
   }
   return 0;
 }
-#endif
 #endif

@@ -23,7 +23,7 @@ static void draw(double t)
   static float fxd = 1.0f / G_XRES;
   static float fyd = 1.0f / G_YRES;
   float fx, fy=0.0f, ft=(float)t;
-  u32 *p = g_pixels;
+  u32 *p = g_scrbuf;
 
   g_perfbgn(0);
 

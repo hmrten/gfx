@@ -32,8 +32,7 @@ typedef unsigned __int64 u64;
 
 typedef __declspec(align(16)) float v4[4];
 
-extern void *g_pixels;
-extern u32   g_ticks;
+extern void *g_scrbuf;
 extern u32   g_xwin;
 extern u32   g_ywin;
 extern u64   g_perf[64][2];
@@ -53,10 +52,10 @@ void  g_wintext(const char *);
 void  g_delay(int);
 void  g_ods(const char *, ...);
 void *g_image(const char *, int *, int *);
-void  g_clear(v4);
+void  g_cls(v4);
 void  g_rect(float, float, float, float, v4);
 void  g_line(float, float, float, float, v4);
-void  g_sprite(float, float, v4, v4, const void *, int, int, int *);
+void  g_sprite(float, float, v4, v4, v4, u32, const void *, int, int);
 
 int   g_setup(void);
 int   g_frame(double, double);
@@ -66,8 +65,7 @@ int   g_frame(double, double);
 #include <stdio.h>
 #include <intrin.h>
 
-void *g_pixels;
-u32   g_ticks;
+void *g_scrbuf;
 u32   g_xwin;
 u32   g_ywin;
 u64   g_perf[64][2];
@@ -148,10 +146,10 @@ void *g_image(const char *path, int *ximg, int *yimg)
   return readtga(path, ximg, yimg);
 }
 
-void g_clear(v4 col)
+void g_cls(v4 col)
 {
   __m128 ps = _mm_load_ps(col);
-  __stosd(g_pixels, ps_toint(ps), G_XRES*G_YRES);
+  __stosd(g_scrbuf, ps_toint(ps), G_XRES*G_YRES);
 }
 
 void g_rect(float x, float y, float w, float h, v4 col)
@@ -187,7 +185,7 @@ void g_rect(float x, float y, float w, float h, v4 col)
   float t = col[3];
   __m128 m = _mm_set1_ps(1.0f-t);
   __m128 a = ps_scale1(_mm_load_ps(col), t);
-  u32 *p = (u32 *)g_pixels + iy0*G_XRES + ix0;
+  u32 *p = (u32 *)g_scrbuf + iy0*G_XRES + ix0;
   for (int i=0; i<ih; ++i) {
     u32 *xp = p;
     for (int j=0; j<iw; ++j) {
@@ -268,7 +266,7 @@ void g_line(float x0, float y0, float x1, float y1, v4 col)
   float t = col[3];
   __m128 m = _mm_set1_ps(1.0f-t);
   __m128 a = ps_scale1(_mm_load_ps(col), t);
-  u32 *p = (u32 *)g_pixels + iy0*G_XRES + ix0;
+  u32 *p = (u32 *)g_scrbuf + iy0*G_XRES + ix0;
   do {
     *p = ps_toint(ps_madd(ps_fromint(*p), m, a));
     d += j;
@@ -279,8 +277,8 @@ void g_line(float x0, float y0, float x1, float y1, v4 col)
   } while (n--);
 }
 
-void g_sprite(float x, float y, v4 axis, v4 tint,
-              const void *img, int ximg, int yimg, int *rimg)
+void g_sprite(float x, float y, v4 axis, v4 tint, v4 clip, u32 mode,
+              const void *img, int ximg, int yimg)
 {
   g_perfbgn(0);
 
@@ -321,8 +319,8 @@ void g_sprite(float x, float y, v4 axis, v4 tint,
   int h = ymax-ymin+1;
 
   u32 *pimg = (u32 *)img;
-  u32 *prow = (u32 *)g_pixels + ymin*G_XRES + xmin;
-  u32 *plast = (u32 *)g_pixels + ymax*G_XRES;
+  u32 *prow = (u32 *)g_scrbuf + ymin*G_XRES + xmin;
+  u32 *plast = (u32 *)g_scrbuf + ymax*G_XRES;
   while (prow <= plast) {
     float u = ur;
     float v = vr;
@@ -353,7 +351,7 @@ void g_sprite(float x, float y, v4 axis, v4 tint,
 #include <windows.h>
 #include <mmsystem.h>
 
-static u32    i_pixels[G_XRES*G_YRES];
+static u32    i_scrbuf[G_XRES*G_YRES];
 static HWND   i_hw;
 static HDC    i_dc;
 static u32    i_winsize;
@@ -549,7 +547,7 @@ int WinMain(HINSTANCE inst, HINSTANCE pinst, LPSTR cmdline, int cmdshow)
   HDC   dc;
   u32   dw, dh;
 
-  g_pixels = i_pixels;
+  g_scrbuf = i_scrbuf;
   i_heap = GetProcessHeap();
   timeBeginPeriod(1);
   CreateThread(0, 0, i_winloop, 0, 0, 0);
@@ -581,7 +579,7 @@ int WinMain(HINSTANCE inst, HINSTANCE pinst, LPSTR cmdline, int cmdshow)
     if (g_frame(t, dt) != 0)
       break;
 
-    StretchDIBits(dc, 0, 0, dw, dh, 0, 0, G_XRES, G_YRES, i_pixels, &bi,
+    StretchDIBits(dc, 0, 0, dw, dh, 0, 0, G_XRES, G_YRES, i_scrbuf, &bi,
                   DIB_RGB_COLORS, SRCCOPY);
     ValidateRect(hw, 0);
     i_dbgtime(hw, t, dt);

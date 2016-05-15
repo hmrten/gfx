@@ -12,14 +12,14 @@ static void draw(double t)
 {
   v4 col = {0.2f, 0.2f, 0.4f, 0.0f};
   float ang = (float)t;
-  g_clear(col);
+  g_cls(col);
 
   float xa = cosf(ang);
   float ya = sinf(ang);
   float xs = 1.25f + 0.75f*xa;
   float ys = xs;
   v4 axis = { xa*xs, -ya*xs, ya*ys, xa*ys };
-  g_sprite(G_XRES/2, G_YRES/2, axis, 0, img, ximg, yimg, 0);
+  g_sprite(G_XRES/2, G_YRES/2, axis, 0, 0, 0, img, ximg, yimg);
 
   v4 col2 = { 1.0f, 0.0f, 1.0f, 1.0f };
   col2[3] = 0.5f+0.5f*cosf(ang*2.0f);
